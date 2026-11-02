@@ -1,7 +1,8 @@
 ///|
-/// Diffie-Hellman function. Only Curve25519 (`25519`) is implemented.
+/// Diffie-Hellman function. `25519` is 32 bytes and `448` is 56 bytes.
 pub enum DhKind {
   Curve25519
+  X448
 }
 
 ///|
@@ -15,13 +16,24 @@ pub enum CipherKind {
 /// Hash function used for HMAC and HKDF inside Noise.
 pub enum HashKind {
   Sha256
+  Sha512
   Blake2s
+  Blake2b
 }
 
 ///|
 pub fn DhKind::name(self : DhKind) -> String {
   match self {
     Curve25519 => "25519"
+    X448 => "448"
+  }
+}
+
+///|
+pub fn DhKind::dh_len(self : DhKind) -> Int32 {
+  match self {
+    Curve25519 => 32
+    X448 => 56
   }
 }
 
@@ -37,7 +49,9 @@ pub fn CipherKind::name(self : CipherKind) -> String {
 pub fn HashKind::name(self : HashKind) -> String {
   match self {
     Sha256 => "SHA256"
+    Sha512 => "SHA512"
     Blake2s => "BLAKE2s"
+    Blake2b => "BLAKE2b"
   }
 }
 
@@ -45,6 +59,7 @@ pub fn HashKind::name(self : HashKind) -> String {
 pub fn HashKind::hash_len(self : HashKind) -> Int32 {
   match self {
     Sha256 | Blake2s => 32
+    Sha512 | Blake2b => 64
   }
 }
 
@@ -52,6 +67,7 @@ pub fn HashKind::hash_len(self : HashKind) -> Int32 {
 pub fn HashKind::block_len(self : HashKind) -> Int32 {
   match self {
     Sha256 | Blake2s => 64
+    Sha512 | Blake2b => 128
   }
 }
 
@@ -72,7 +88,9 @@ pub fn to_hex(data : Bytes) -> String {
 pub fn HashKind::digest(self : HashKind, data : Bytes) -> Bytes {
   match self {
     Sha256 => @lib.sha256(data)
+    Sha512 => @lib.sha512(data)
     Blake2s => blake2s_256(data)
+    Blake2b => blake2b_512(data)
   }
 }
 
@@ -84,22 +102,27 @@ pub fn HashKind::digest(self : HashKind, data : Bytes) -> Bytes {
 pub fn HashKind::hmac(self : HashKind, key : Bytes, message : Bytes) -> Bytes {
   match self {
     Sha256 => @lib.hmac_sha256(key, message)
-    Blake2s => hmac_blake2s(key, message)
+    Sha512 => @lib.hmac_sha512(key, message)
+    Blake2s => hmac_with(64, key, message, blake2s_256)
+    Blake2b => hmac_with(128, key, message, blake2b_512)
   }
 }
 
 ///|
-fn hmac_blake2s(key : Bytes, message : Bytes) -> Bytes {
-  let block = 64
+fn hmac_with(
+  block : Int32,
+  key : Bytes,
+  message : Bytes,
+  digest : (Bytes) -> Bytes,
+) -> Bytes {
   let k_prime = if key.length() > block {
-    pad_right(blake2s_256(key), block)
+    pad_right(digest(key), block)
   } else {
     pad_right(key, block)
   }
   let ipad = xor_bytes(k_prime, repeat_byte(b'\x36', block))
   let opad = xor_bytes(k_prime, repeat_byte(b'\x5c', block))
-  let inner = blake2s_256(concat2(ipad, message))
-  blake2s_256(concat2(opad, inner))
+  digest(concat2(opad, digest(concat2(ipad, message))))
 }
 
 ///|
@@ -208,12 +231,52 @@ pub fn dh_25519(scalar : Bytes, peer_public : Bytes) -> Bytes raise NoiseError {
 }
 
 ///|
+/// Public key for the selected Noise DH function.
+pub fn dh_public(kind : DhKind, scalar : Bytes) -> Bytes raise NoiseError {
+  match kind {
+    Curve25519 => public_key_25519(scalar)
+    X448 => public_key_x448(scalar)
+  }
+}
+
+///|
+/// DH(private, peer public) for the selected Noise DH function.
+pub fn dh_exchange(
+  kind : DhKind,
+  scalar : Bytes,
+  peer_public : Bytes,
+) -> Bytes raise NoiseError {
+  match kind {
+    Curve25519 => dh_25519(scalar, peer_public)
+    X448 => dh_x448(scalar, peer_public)
+  }
+}
+
+///|
 /// X25519 public key from a 32-byte private scalar.
 pub fn public_key_25519(scalar : Bytes) -> Bytes raise NoiseError {
   if scalar.length() != 32 {
     raise InvalidInput("x25519 private key must be 32 bytes")
   }
   @lib.x25519_public_key(scalar)
+}
+
+///|
+/// X448(scalar, peer public). The scalar is 56 bytes.
+pub fn dh_x448(scalar : Bytes, peer_public : Bytes) -> Bytes raise NoiseError {
+  match @lib.x448_or(scalar, peer_public) {
+    Ok(shared) => shared
+    Err(_) => raise InvalidInput("x448 inputs must be 56 bytes")
+  }
+}
+
+///|
+/// X448 public key from a 56-byte private scalar.
+pub fn public_key_x448(scalar : Bytes) -> Bytes raise NoiseError {
+  if scalar.length() != 56 {
+    raise InvalidInput("x448 private key must be 56 bytes")
+  }
+  @lib.x448_public_key(scalar)
 }
 
 ///|

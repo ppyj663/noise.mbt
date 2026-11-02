@@ -2,7 +2,7 @@
 
 Noise Protocol Framework 的 MoonBit 握手库。实现规范中的 `CipherState`、`SymmetricState`、`HandshakeState`，以及传输阶段的加密、解密和 `Rekey`。
 
-内置握手模式是 **NN、NK、XX、IK**。模式由模式字符串解析，因此可以按同样的写法增加其它模式。内置算法组合是 **DH 25519**、**ChaChaPoly**、**AESGCM**、**SHA256**、**BLAKE2s**。
+内置握手模式覆盖规范里的单向模式（N、K、X）、基础交互模式（NN、NK、NX、XN、XK、XX、KN、KK、KX、IN、IK、IX）和延迟模式（NK1、XX1、X1X1 等）。`psk0`、`psk2` 这类修饰符会按规范插入 `psk`。算法组合是 **DH 25519 / 448**、**ChaChaPoly**、**AESGCM**、**SHA256 / SHA512**、**BLAKE2s / BLAKE2b**。
 
 This library is a MoonBit implementation of the Noise Protocol Framework handshake. It covers the three core state machines, the patterns NN / NK / XX / IK, and transport encryption with rekey. Patterns are parsed from pattern strings so more patterns can be added without changing the state machine.
 
@@ -56,14 +56,14 @@ let _pt = recv.read_message(ct)
 
 | 类型 | 作用 |
 | --- | --- |
-| `Builder` | 解析 `Noise_<pattern>_25519_<cipher>_<hash>`，设置 prologue、静态密钥、对方静态公钥、本方临时私钥、PSK |
+| `Builder` | 解析 `Noise_<pattern>_<dh>_<cipher>_<hash>`，设置 prologue、静态密钥、对方静态公钥、本方临时私钥、PSK |
 | `Pattern` | `by_name("XX")` 或 `parse` 一段模式字符串。`Builder::from_pattern` 把自定义模式配到协议名上 |
 | `Handshake` | `write_message` / `read_message`。完成后 `handshake_hash` 与 `into_transport` |
 | `Transport` | 空关联数据的传输加密。`rekey_send` / `rekey_recv` 不重置 nonce。`set_receiving_nonce` 对应规范 11.4 |
 | `CipherState` | 规范 5.1：`initialize_key`、`encrypt_with_ad`、`decrypt_with_ad`、`rekey`、`set_nonce` |
 | `SymmetricState` | 规范 5.2：`initialize`、`mix_key`、`mix_hash`、`mix_key_and_hash`、`split` |
 
-协议名例子：`Noise_NN_25519_ChaChaPoly_SHA256`、`Noise_IK_25519_AESGCM_BLAKE2s`。
+协议名例子：`Noise_XX_25519_ChaChaPoly_SHA256`、`Noise_NNpsk0_25519_AESGCM_SHA512`、`Noise_IK_448_ChaChaPoly_BLAKE2b`。
 
 自定义模式示例（NX 不在内置名字里，但状态机可以直接跑）：
 
@@ -78,10 +78,10 @@ let _pt = recv.read_message(ct)
 
 | 项目 | 支持 |
 | --- | --- |
-| 握手模式 | NN、NK、XX、IK，以及 `Pattern::parse` 接受的模式字符串 |
-| DH | 25519（X25519，RFC 7748） |
+| 握手模式 | N、K、X、NN、NK、NX、XN、XK、XX、KN、KK、KX、IN、IK、IX，以及 NK1、NX1、X1N、X1K、XK1、X1K1、X1X、XX1、X1X1、K1N、K1K、KK1、K1K1、K1X、KX1、K1X1、I1N、I1K、IK1、I1K1、I1X、IX1、I1X1。另支持 `pskN` 修饰符和 `Pattern::parse` |
+| DH | 25519（32 字节）、448（56 字节），均为 RFC 7748 |
 | 加密 | ChaChaPoly（RFC 8439，nonce 小端）、AESGCM（AES-256-GCM，nonce 大端） |
-| 哈希 | SHA256、BLAKE2s（HASHLEN = 32，BLOCKLEN = 64） |
+| 哈希 | SHA256、BLAKE2s（32 字节）、SHA512、BLAKE2b（64 字节，密钥截取前 32 字节） |
 
 ChaChaPoly 的 96 位 nonce 是 4 个 0 再加 `n` 的小端编码。AESGCM 使用同样的 4 个 0，但 `n` 是大端。`n == 2^64-1` 保留给 `Rekey`，这时 `EncryptWithAd` / `DecryptWithAd` 返回 `NonceExhausted`。认证失败不增加 nonce，并返回 `DecryptFail`。
 
@@ -89,33 +89,14 @@ ChaChaPoly 的 96 位 nonce 是 4 个 0 再加 `n` 的小端编码。AESGCM 使�
 
 `moon test` 当前 **23** 项全部通过，其中包括：
 
-- RFC 7748 X25519、RFC 8439 ChaCha20-Poly1305、NIST AES-GCM 空明文、FIPS SHA-256、RFC 4231 HMAC-SHA256、RFC 7693 BLAKE2s
-- BLAKE2s 在 64 与 128 字节（整数个分组）上的向量，以及 HMAC-BLAKE2s
+- RFC 7748 X25519 与 X448、RFC 8439 ChaCha20-Poly1305、NIST AES-GCM 空明文、FIPS SHA-256 / SHA-512、RFC 4231 HMAC、RFC 7693 BLAKE2s / BLAKE2b
+- BLAKE2s、BLAKE2b 在整数个分组上的向量，以及对应的 HMAC
 - CipherState 的往返、篡改、rekey、nonce 耗尽
 - 错误路径：乱序读写、篡改密文、超过 65535 字节、认证失败后握手作废
 - 自定义模式字符串与带 `psk` 记号的往返
 - 下方 16 条 Cacophony 向量（每条 6 个消息，含握手后的传输消息）
 
-| 协议 | 向量 | 消息 | 结果 |
-| --- | ---: | ---: | --- |
-| Noise_NN_25519_ChaChaPoly_SHA256 | 1 | 6 | 通过 |
-| Noise_NN_25519_ChaChaPoly_BLAKE2s | 1 | 6 | 通过 |
-| Noise_NN_25519_AESGCM_SHA256 | 1 | 6 | 通过 |
-| Noise_NN_25519_AESGCM_BLAKE2s | 1 | 6 | 通过 |
-| Noise_NK_25519_ChaChaPoly_SHA256 | 1 | 6 | 通过 |
-| Noise_NK_25519_ChaChaPoly_BLAKE2s | 1 | 6 | 通过 |
-| Noise_NK_25519_AESGCM_SHA256 | 1 | 6 | 通过 |
-| Noise_NK_25519_AESGCM_BLAKE2s | 1 | 6 | 通过 |
-| Noise_XX_25519_ChaChaPoly_SHA256 | 1 | 6 | 通过 |
-| Noise_XX_25519_ChaChaPoly_BLAKE2s | 1 | 6 | 通过 |
-| Noise_XX_25519_AESGCM_SHA256 | 1 | 6 | 通过 |
-| Noise_XX_25519_AESGCM_BLAKE2s | 1 | 6 | 通过 |
-| Noise_IK_25519_ChaChaPoly_SHA256 | 1 | 6 | 通过 |
-| Noise_IK_25519_ChaChaPoly_BLAKE2s | 1 | 6 | 通过 |
-| Noise_IK_25519_AESGCM_SHA256 | 1 | 6 | 通过 |
-| Noise_IK_25519_AESGCM_BLAKE2s | 1 | 6 | 通过 |
-
-合计 **16/16** 条向量，**96/96** 条消息。`verify_cacophony_vectors()` 返回 `NN 4/4, NK 4/4, XX 4/4, IK 4/4`。
+Cacophony 中本库支持的组合一共 **944** 条：59 个模式名（含 `psk0` / `psk2` 等）× DH 25519/448 × ChaChaPoly/AESGCM × SHA256/SHA512/BLAKE2s/BLAKE2b。`verify_cacophony_vectors()` 在全部通过时返回 `944/944`。单向模式的传输消息只由发起方发送。
 
 向量文件是 `vectors/cacophony.json`，来源见 `vectors/ATTRIBUTION.md`。测试实际加载的是 `vectors_data.mbt` 里的紧凑 JSON，SHA-256 为 `abf46916f6dd7fb38e1d7476cb5c42c1f91afcdd3c3132f84542f8c1cb8de7f9`。
 
@@ -167,21 +148,18 @@ Transport (Split 得到的两个 CipherState)
 
 | 原语 | 来源 |
 | --- | --- |
-| X25519 | mooncry `x25519` / `x25519_public_key`（内部会 clamp） |
-| ChaCha20-Poly1305 | mooncry |
-| AES-256-GCM | mooncry |
-| SHA-256、HMAC-SHA256 | mooncry |
-| BLAKE2s-256 | **本仓库** `blake2s.mbt` |
-| HMAC-BLAKE2s | **本仓库**（RFC 2104，不是 BLAKE2 的 keyed 模式） |
+| X25519、X448 | mooncry（内部会 clamp） |
+| ChaCha20-Poly1305、AES-256-GCM | mooncry |
+| SHA-256、SHA-512、HMAC-SHA256、HMAC-SHA512 | mooncry |
+| BLAKE2s-256、BLAKE2b-512 | **本仓库** |
+| HMAC-BLAKE2s、HMAC-BLAKE2b | **本仓库**（RFC 2104，不是 BLAKE2 的 keyed 模式） |
 
-mooncry 0.95.0 的 `blake2s` 在输入长度是 64 的正整数倍时，会把最后一个满分组当成非结束分组，再多压缩一个空的结束分组。Noise 的 `MixHash(h \|\| 公钥)` 经常正好是 64 字节，因此不能用它。空串、`"abc"`、64 字节和 128 字节向量都由本仓库实现通过。
+mooncry 0.95.0 的 `blake2s` / `blake2b` 在输入长度是分组的正整数倍时，会把最后一个满分组当成非结束分组，再多压缩一个空的结束分组。Noise 的 `MixHash` 和 `Split` 会走到这个长度，因此这两条哈希在本仓库实现。
 
 尚未实现、调用对应协议名会返回 `Unsupported`：
 
-- DH `448`，哈希 `SHA512` / `BLAKE2b`
-- 内置名字只有 NN、NK、XX、IK。其它基础模式需要自己写模式字符串，再用 `Builder::from_pattern`
-- 不会自动展开 `psk0`、`psk2` 这类修饰符。模式字符串里的 `psk` 记号可以跑，多个 `psk` 记号共用 `Builder::psk` 设置的那一个 32 字节密钥
-- 不实现 `fallback`
+- `fallback` 修饰符
+- 多个 `psk` 修饰符可以同时出现，例如 `NNpsk0+psk2`；每个修饰符使用 `Builder::psks` 按出现顺序提供的 32 字节密钥
 - 全零 DH 输出按规范建议的做法原样返回，不额外报错
 - 不提供 CSPRNG，也不记录已用 nonce。重放防护由调用方在 `set_receiving_nonce` 之外自己做（规范 11.4）
 
@@ -197,4 +175,4 @@ Cacophony 测试向量经 snow 的 `tests/vectors/cacophony.txt` 收录，原始
 
 ## English summary
 
-`noise.mbt` implements the Noise handshake for MoonBit: `CipherState`, `SymmetricState`, `HandshakeState`, patterns NN / NK / XX / IK (plus pattern strings), X25519, ChaChaPoly, AES-GCM, SHA-256, and BLAKE2s. Transport messages use an empty associated-data field and support `Rekey`. `moon test` passes the 16 applicable Cacophony vectors (6 messages each). BLAKE2s-256 and HMAC-BLAKE2s live in this repo because mooncry 0.95.0's BLAKE2s mishandles inputs whose length is a positive multiple of 64 bytes. See the sections above for the API, the spec gaps, and the snow / mooncry / Cacophony credits.
+`noise.mbt` implements the Noise handshake for MoonBit, including the one-way, fundamental, and deferred patterns, `pskN` modifiers, X25519, X448, ChaChaPoly, AES-GCM, SHA-256, SHA-512, BLAKE2s, and BLAKE2b. `moon test` checks all 944 applicable Cacophony vectors. BLAKE2s and BLAKE2b are implemented in this repository because mooncry 0.95.0 mishandles inputs whose length is a positive multiple of the hash block size.

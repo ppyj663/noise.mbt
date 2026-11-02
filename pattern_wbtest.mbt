@@ -27,9 +27,21 @@ test "parse custom pattern string" {
 }
 
 ///|
+test "builtin patterns include one-way, deferred, and psk" {
+  assert_true(Pattern::by_name("N").is_oneway())
+  assert_eq(Pattern::by_name("NX").message_count(), 2)
+  assert_eq(Pattern::by_name("X1X1").message_count(), 4)
+  let psk = Pattern::by_name("NNpsk0")
+  assert_true(psk.has_psk())
+  assert_eq(psk.psk_slots(), [0])
+  let later = Pattern::by_name("NNpsk2")
+  assert_eq(later.psk_slots(), [2])
+}
+
+///|
 test "unknown builtin pattern" {
   let ok = try {
-    let _ = Pattern::by_name("NX")
+    let _ = Pattern::by_name("ZZ")
     true
   } catch {
     Unsupported(_) => false

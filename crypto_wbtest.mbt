@@ -114,6 +114,49 @@ test "chacha20-poly1305 rfc 8439 section 2.8.2" {
 }
 
 ///|
+test "sha512 and blake2b empty and exact block" {
+  expect_hex(
+    Sha512.digest(b""),
+    "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e",
+  )
+  expect_hex(
+    Blake2b.digest(b""),
+    "786a02f742015903c6c6fd852552d272912f4740e15847618a86e217f71f5419d25e1031afee585313896444934eb04b903a685b1448b755d56f701afe9be2ce",
+  )
+  let block = Array::make(128, b'\x00')
+  for i in 0..<128 {
+    block[i] = (i % 256).to_byte()
+  }
+  expect_hex(
+    blake2b_512(Bytes::from_array(block[:])),
+    "2319e3789c47e2daa5fe807f61bec2a1a6537fa03f19ff32e87eecbfd64b7e0e8ccff439ac333b040f19b0c4ddd11a61e24ac1fe0f10a039806c5dcc0da3d115",
+  )
+  let key = Bytes::make(32, b'\x11')
+  expect_hex(
+    Blake2b.hmac(key, b""),
+    "77e2520986ac3d968f0e03b0a2a6db02efa5f21016495ed38635c5d119da233d312d204e9fdbdcc3a56d50e95150f4f273d56381e56cf758a7260651623db4d4",
+  )
+}
+
+///|
+test "x448 rfc 7748 section 6.2" {
+  let alice = hex(
+    "9a8f4925d1519f5775cf46b04b5800d4ee9ee8bae8bc5565d498c28dd9c9baf574a9419744897391006382a6f127ab1d9ac2d8c0a598726b",
+  )
+  let bob = hex(
+    "1c306a7ac2a0e2e0990b294470cba339e6453772b075811d8fad0d1d6927c120bb5ee8972b0d3e21374c9c921b09d1b0366f10b65173992d",
+  )
+  expect_hex(
+    public_key_x448(alice),
+    "9b08f7cc31b7e3e67d22d5aea121074a273bd2b83de09c63faa73d2c22c5d9bbc836647241d953d40c5b12da88120d53177f80e532c41fa0",
+  )
+  expect_hex(
+    dh_x448(alice, public_key_x448(bob)),
+    "07fff4181ac6cc95ec1c16a94a0f74d12da232ce40a77552281d282bb60c0b56fd2464c335543936521c24403085d59a449a5037514a879d",
+  )
+}
+
+///|
 test "aesgcm nist empty plaintext" {
   let key = zeros(32)
   let nonce = zeros(12)

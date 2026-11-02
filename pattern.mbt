@@ -7,29 +7,30 @@ pub enum Token {
   Es
   Se
   Ss
-  Psk
+  Psk(Int32)
 }
 
 ///|
 /// A handshake pattern parsed from a pattern string.
 ///
-/// Built-in names are `NN`, `NK`, `XX`, and `IK`. Any other pattern that
-/// follows the spec diagram can be loaded with `Pattern::parse`, for example:
+/// Built-in names cover the one-way, fundamental, and deferred patterns in
+/// the Noise spec. A suffix such as `psk0` or `psk0+psk2` inserts `psk`
+/// tokens. Any other diagram can be loaded with `Pattern::parse`, for example:
 ///
 /// ```text
 /// -> e
 /// <- e, ee, s, es
 /// ```
 ///
-/// A line `...` separates pre-messages from handshake messages. `psk` is
-/// accepted so a caller can place that token explicitly. Pattern modifiers
-/// such as `psk0` are not applied automatically.
+/// A line `...` separates pre-messages from handshake messages. `psk` in a
+/// diagram is slot 0. Named modifiers select the slot and the position.
 pub struct Pattern {
   priv mut name : String
   priv pre_i : Array[Token]
   priv pre_r : Array[Token]
   priv messages : Array[Array[Token]]
-  priv is_psk : Bool
+  priv mut is_psk : Bool
+  priv psk_slots : Array[Int32]
 }
 
 ///|
@@ -48,16 +49,25 @@ pub fn Pattern::has_psk(self : Pattern) -> Bool {
 }
 
 ///|
+/// True when the pattern has a single handshake message. Transport then
+/// stays in that direction, which is how the one-way patterns behave.
+pub fn Pattern::is_oneway(self : Pattern) -> Bool {
+  self.messages.length() == 1
+}
+
+///|
+pub fn Pattern::psk_slots(self : Pattern) -> Array[Int32] {
+  self.psk_slots
+}
+
+///|
 pub fn Pattern::by_name(name : String) -> Pattern raise NoiseError {
-  let src = match name {
-    "NN" => "-> e\n<- e, ee"
-    "NK" => "<- s\n...\n-> e, es\n<- e, ee"
-    "XX" => "-> e\n<- e, ee, s, es\n-> s, se"
-    "IK" => "<- s\n...\n-> e, es, s, ss\n<- e, ee, se"
-    _ => raise Unsupported("unknown pattern " + name)
-  }
-  let pattern = parse_pattern(src)
+  let (base, modifiers) = split_pattern_name(name)
+  let pattern = parse_pattern(pattern_definition(base))
   pattern.name = name
+  for modifier in modifiers {
+    pattern.apply_psk(parse_psk_index(modifier))
+  }
   pattern
 }
 
@@ -92,6 +102,7 @@ fn parse_pattern(definition : String) -> Pattern raise NoiseError {
   let messages : Array[Array[Token]] = []
   let mut after = false
   let mut is_psk = false
+  let psk_slots : Array[Int32] = []
   for line in lines {
     if line == "..." {
       after = true
@@ -99,8 +110,12 @@ fn parse_pattern(definition : String) -> Pattern raise NoiseError {
     }
     let (from_init, tokens) = parse_message_line(line)
     for token in tokens {
-      if token is Psk {
-        is_psk = true
+      match token {
+        Psk(slot) => {
+          is_psk = true
+          psk_slots.push(slot)
+        }
+        _ => ()
       }
     }
     if saw_sep && !after {
@@ -120,7 +135,28 @@ fn parse_pattern(definition : String) -> Pattern raise NoiseError {
   if messages.length() == 0 {
     raise InvalidInput("pattern has no handshake messages")
   }
-  { name: header, pre_i, pre_r, messages, is_psk, }
+  { name: header, pre_i, pre_r, messages, is_psk, psk_slots, }
+}
+
+///|
+/// `psk0` is inserted at the start of the first message. `pskN` for N > 0
+/// is appended to message N - 1, matching Noise section 9.4.
+fn Pattern::apply_psk(self : Pattern, slot : Int32) -> Unit raise NoiseError {
+  let index = if slot == 0 { 0 } else { slot - 1 }
+  if index < 0 || index >= self.messages.length() {
+    raise InvalidInput("psk modifier does not fit this pattern")
+  }
+  if slot == 0 {
+    let next : Array[Token] = [Psk(slot)]
+    for token in self.messages[index] {
+      next.push(token)
+    }
+    self.messages[index] = next
+  } else {
+    self.messages[index].push(Psk(slot))
+  }
+  self.psk_slots.push(slot)
+  self.is_psk = true
 }
 
 ///|
@@ -162,7 +198,7 @@ fn parse_token(word : String) -> Token raise NoiseError {
     "es" => Es
     "se" => Se
     "ss" => Ss
-    "psk" => Psk
+    "psk" => Psk(0)
     _ => raise InvalidInput("unknown token " + word)
   }
 }
@@ -175,8 +211,8 @@ fn pattern_sender_is_initiator(index : Int32) -> Bool {
 ///|
 fn token_eq(a : Token, b : Token) -> Bool {
   match (a, b) {
-    (E, E) | (S, S) | (Ee, Ee) | (Es, Es) | (Se, Se) | (Ss, Ss) | (Psk, Psk) =>
-      true
+    (E, E) | (S, S) | (Ee, Ee) | (Es, Es) | (Se, Se) | (Ss, Ss) => true
+    (Psk(left), Psk(right)) => left == right
     _ => false
   }
 }

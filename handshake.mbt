@@ -22,9 +22,10 @@ pub struct Handshake {
   priv mut rs : Bytes?
   priv mut re : Bytes?
   priv mut ephemeral_once : Bytes?
+  priv dh : DhKind
   priv random : ((Int32) -> Bytes)?
   priv is_psk : Bool
-  priv psk : Bytes?
+  priv psk_pairs : Array[(Int32, Bytes)]
   priv mut send_cs : CipherState?
   priv mut recv_cs : CipherState?
 }
@@ -37,6 +38,11 @@ pub fn Handshake::is_initiator(self : Handshake) -> Bool {
 ///|
 pub fn Handshake::is_my_turn(self : Handshake) -> Bool {
   self.my_turn
+}
+
+///|
+pub fn Handshake::is_oneway(self : Handshake) -> Bool {
+  self.pattern.is_oneway()
 }
 
 ///|
@@ -70,15 +76,8 @@ fn Handshake::create(
     Responder => false
   }
   let pattern = builder.pattern
-  if pattern.has_psk() {
-    match builder.psk {
-      Some(key) =>
-        if key.length() != 32 {
-          raise InvalidInput("psk must be 32 bytes")
-        }
-      None => raise MissingKey
-    }
-  }
+  let dh = builder.dh
+  require_psk_slots(pattern, builder.psk_pairs)
   let sym = SymmetricState::new(builder.cipher, builder.hash)
   sym.initialize(builder.protocol_name)
   sym.mix_hash(builder.prologue)
@@ -97,15 +96,16 @@ fn Handshake::create(
     rs: builder.remote_static,
     re: None,
     ephemeral_once: None,
+    dh,
     random,
     is_psk: pattern.has_psk(),
-    psk: builder.psk,
+    psk_pairs: builder.psk_pairs,
     send_cs: None,
     recv_cs: None,
   }
   match builder.local_static {
     Some(sk) => {
-      hs.s_pub = Some(public_key_25519(sk))
+      hs.s_pub = Some(dh_public(dh, sk))
       hs.s_priv = Some(sk)
     }
     None => ()
@@ -113,7 +113,7 @@ fn Handshake::create(
   match builder.local_ephemeral {
     Some(ek) =>
       if pattern_needs_local_ephemeral_now(pattern, initiator) {
-        hs.e_pub = Some(public_key_25519(ek))
+        hs.e_pub = Some(dh_public(dh, ek))
         hs.e_priv = Some(ek)
       } else {
         hs.ephemeral_once = Some(ek)
@@ -130,8 +130,8 @@ fn Handshake::create(
   if pattern_needs_remote_static(pattern, initiator) {
     match hs.rs {
       Some(pk) =>
-        if pk.length() != 32 {
-          raise InvalidInput("remote static key must be 32 bytes")
+        if pk.length() != dh.dh_len() {
+          raise InvalidInput("remote static key has the wrong length")
         }
       None => raise MissingKey
     }
@@ -177,28 +177,30 @@ fn Handshake::mix_premessages(
       _ => raise InvalidInput("pre-message token must be e or s")
     }
     self.sym.mix_hash(public)
-    if self.is_psk {
-      self.sym.mix_key(public)
+    match token {
+      E => if self.is_psk { self.sym.mix_key(public) }
+      _ => ()
     }
   }
 }
 
 ///|
 fn Handshake::next_ephemeral(self : Handshake) -> Bytes raise NoiseError {
+  let expect = self.dh.dh_len()
   match self.ephemeral_once {
     Some(key) => {
       self.ephemeral_once = None
-      if key.length() != 32 {
-        raise InvalidInput("ephemeral private key must be 32 bytes")
+      if key.length() != expect {
+        raise InvalidInput("ephemeral private key has the wrong length")
       }
       key
     }
     None =>
       match self.random {
         Some(fill) => {
-          let key = fill(32)
-          if key.length() != 32 {
-            raise InvalidInput("random source must return 32 bytes")
+          let key = fill(expect)
+          if key.length() != expect {
+            raise InvalidInput("random source returned the wrong length")
           }
           key
         }
@@ -209,37 +211,68 @@ fn Handshake::next_ephemeral(self : Handshake) -> Bytes raise NoiseError {
 
 ///|
 fn Handshake::dh_ee(self : Handshake) -> Bytes raise NoiseError {
-  dh_pair(self.e_priv, self.re)
+  self.dh_pair(self.e_priv, self.re)
 }
 
 ///|
 fn Handshake::dh_ss(self : Handshake) -> Bytes raise NoiseError {
-  dh_pair(self.s_priv, self.rs)
+  self.dh_pair(self.s_priv, self.rs)
 }
 
 ///|
 fn Handshake::dh_es(self : Handshake) -> Bytes raise NoiseError {
   if self.initiator {
-    dh_pair(self.e_priv, self.rs)
+    self.dh_pair(self.e_priv, self.rs)
   } else {
-    dh_pair(self.s_priv, self.re)
+    self.dh_pair(self.s_priv, self.re)
   }
 }
 
 ///|
 fn Handshake::dh_se(self : Handshake) -> Bytes raise NoiseError {
   if self.initiator {
-    dh_pair(self.s_priv, self.re)
+    self.dh_pair(self.s_priv, self.re)
   } else {
-    dh_pair(self.e_priv, self.rs)
+    self.dh_pair(self.e_priv, self.rs)
   }
 }
 
 ///|
-fn dh_pair(scalar : Bytes?, peer : Bytes?) -> Bytes raise NoiseError {
+fn Handshake::dh_pair(
+  self : Handshake,
+  scalar : Bytes?,
+  peer : Bytes?,
+) -> Bytes raise NoiseError {
   match (scalar, peer) {
-    (Some(sk), Some(pk)) => dh_25519(sk, pk)
+    (Some(sk), Some(pk)) => dh_exchange(self.dh, sk, pk)
     _ => raise MissingKey
+  }
+}
+
+///|
+fn lookup_psk(pairs : Array[(Int32, Bytes)], slot : Int32) -> Bytes? {
+  for pair in pairs {
+    let (index, key) = pair
+    if index == slot {
+      return Some(key)
+    }
+  }
+  None
+}
+
+///|
+fn require_psk_slots(
+  pattern : Pattern,
+  pairs : Array[(Int32, Bytes)],
+) -> Unit raise NoiseError {
+  for slot in pattern.psk_slots() {
+    match lookup_psk(pairs, slot) {
+      Some(key) =>
+        if key.length() != 32 {
+          raise InvalidInput("psk must be 32 bytes")
+        }
+      None => raise MissingKey
+    }
   }
 }
 
@@ -279,7 +312,7 @@ pub fn Handshake::write_message(
     match token {
       E => {
         let sk = self.next_ephemeral()
-        let pk = public_key_25519(sk)
+        let pk = dh_public(self.dh, sk)
         self.e_priv = Some(sk)
         self.e_pub = Some(pk)
         buf.write_bytes(pk)
@@ -300,8 +333,8 @@ pub fn Handshake::write_message(
       Es => self.sym.mix_key(self.dh_es())
       Se => self.sym.mix_key(self.dh_se())
       Ss => self.sym.mix_key(self.dh_ss())
-      Psk =>
-        match self.psk {
+      Psk(slot) =>
+        match lookup_psk(self.psk_pairs, slot) {
           Some(key) => self.sym.mix_key_and_hash(key)
           None => raise MissingKey
         }
@@ -344,8 +377,8 @@ pub fn Handshake::read_message(
   for token in tokens {
     match token {
       E => {
-        let pk = take_bytes(message, offset, 32)
-        offset = offset + 32
+        let pk = take_bytes(message, offset, self.dh.dh_len())
+        offset = offset + self.dh.dh_len()
         self.re = Some(pk)
         self.sym.mix_hash(pk)
         if self.is_psk {
@@ -353,11 +386,12 @@ pub fn Handshake::read_message(
         }
       }
       S => {
-        let n = if self.sym.has_key() { 48 } else { 32 }
+        let dlen = self.dh.dh_len()
+        let n = if self.sym.has_key() { dlen + 16 } else { dlen }
         let temp = take_bytes(message, offset, n)
         offset = offset + n
         let pk = self.sym.decrypt_and_hash(temp)
-        if pk.length() != 32 {
+        if pk.length() != dlen {
           raise DecryptFail
         }
         self.rs = Some(pk)
@@ -366,8 +400,8 @@ pub fn Handshake::read_message(
       Es => self.sym.mix_key(self.dh_es())
       Se => self.sym.mix_key(self.dh_se())
       Ss => self.sym.mix_key(self.dh_ss())
-      Psk =>
-        match self.psk {
+      Psk(slot) =>
+        match lookup_psk(self.psk_pairs, slot) {
           Some(key) => self.sym.mix_key_and_hash(key)
           None => raise MissingKey
         }

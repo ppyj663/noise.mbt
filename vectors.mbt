@@ -15,6 +15,8 @@ priv struct VecCase {
   resp_ephemeral : Bytes?
   init_remote_static : Bytes?
   resp_remote_static : Bytes?
+  init_psks : Array[Bytes]
+  resp_psks : Array[Bytes]
   handshake_hash : Bytes
   messages : Array[VecMsg]
 }
@@ -35,6 +37,26 @@ fn json_hex_required(
   match json_string(obj, key) {
     Some(value) => @lib.hex_to_bytes(value)
     None => raise InvalidInput("missing " + key)
+  }
+}
+
+///|
+fn json_hex_list(
+  obj : Map[String, Json],
+  key : String,
+) -> Array[Bytes] raise NoiseError {
+  match obj.get(key) {
+    Some(Array(items)) => {
+      let out : Array[Bytes] = []
+      for item in items {
+        match item {
+          String(value) => out.push(@lib.hex_to_bytes(value))
+          _ => raise InvalidInput(key)
+        }
+      }
+      out
+    }
+    _ => []
   }
 }
 
@@ -78,6 +100,8 @@ fn parse_vector(value : Json) -> VecCase raise NoiseError {
         resp_ephemeral: json_hex_optional(obj, "resp_ephemeral"),
         init_remote_static: json_hex_optional(obj, "init_remote_static"),
         resp_remote_static: json_hex_optional(obj, "resp_remote_static"),
+        init_psks: json_hex_list(obj, "init_psks"),
+        resp_psks: json_hex_list(obj, "resp_psks"),
         handshake_hash: json_hex_required(obj, "handshake_hash"),
         messages,
       }
@@ -129,13 +153,24 @@ fn apply_optional_key(
 }
 
 ///|
+fn public_from_private(secret : Bytes) -> Bytes raise NoiseError {
+  if secret.length() == 56 {
+    public_key_x448(secret)
+  } else {
+    public_key_25519(secret)
+  }
+}
+
+///|
 fn run_vector(case : VecCase) -> Unit raise Error {
   match (case.resp_static, case.init_remote_static) {
-    (Some(secret), Some(public)) => assert_eq(public_key_25519(secret), public)
+    (Some(secret), Some(public)) =>
+      assert_eq(public_from_private(secret), public)
     _ => ()
   }
   match (case.init_static, case.resp_remote_static) {
-    (Some(secret), Some(public)) => assert_eq(public_key_25519(secret), public)
+    (Some(secret), Some(public)) =>
+      assert_eq(public_from_private(secret), public)
     _ => ()
   }
   let init_builder = Builder::new(case.protocol_name).prologue(
@@ -150,12 +185,22 @@ fn run_vector(case : VecCase) -> Unit raise Error {
   apply_optional_key(resp_builder, case.resp_remote_static, "remote")
   apply_optional_key(init_builder, case.init_ephemeral, "ephemeral")
   apply_optional_key(resp_builder, case.resp_ephemeral, "ephemeral")
+  if case.init_psks.length() > 0 {
+    let _ = init_builder.psks(case.init_psks)
+    let resp_psks = if case.resp_psks.length() > 0 {
+      case.resp_psks
+    } else {
+      case.init_psks
+    }
+    let _ = resp_builder.psks(resp_psks)
+  }
   let initiator = init_builder.build_initiator(None)
   let responder = resp_builder.build_responder(None)
+  let one_way = initiator.is_oneway()
   let mut index = 0
   while !initiator.is_finished() {
     let message = case.messages[index]
-    let wrote = if index % 2 == 0 {
+    let wrote = if one_way || index % 2 == 0 {
       initiator.write_message(message.payload)
     } else {
       responder.write_message(message.payload)
@@ -163,7 +208,7 @@ fn run_vector(case : VecCase) -> Unit raise Error {
     if wrote != message.ciphertext {
       fail(case.protocol_name + " handshake message mismatch")
     }
-    let got = if index % 2 == 0 {
+    let got = if one_way || index % 2 == 0 {
       responder.read_message(wrote)
     } else {
       initiator.read_message(wrote)
@@ -178,7 +223,7 @@ fn run_vector(case : VecCase) -> Unit raise Error {
   assert_eq(init_transport.handshake_hash(), case.handshake_hash)
   while index < case.messages.length() {
     let message = case.messages[index]
-    if index % 2 == 0 {
+    if one_way || index % 2 == 0 {
       let wrote = init_transport.write_message(message.payload)
       if wrote != message.ciphertext {
         fail(case.protocol_name + " transport message mismatch")
@@ -200,32 +245,8 @@ fn run_vector(case : VecCase) -> Unit raise Error {
 /// Returns a one-line pass count per pattern.
 pub fn verify_cacophony_vectors() -> String raise Error {
   let cases = load_cacophony()
-  let mut nn = 0
-  let mut nk = 0
-  let mut xx = 0
-  let mut ik = 0
   for case in cases {
     run_vector(case)
-    let name = case.protocol_name
-    if name.has_prefix("Noise_NN_") {
-      nn = nn + 1
-    } else if name.has_prefix("Noise_NK_") {
-      nk = nk + 1
-    } else if name.has_prefix("Noise_XX_") {
-      xx = xx + 1
-    } else if name.has_prefix("Noise_IK_") {
-      ik = ik + 1
-    } else {
-      raise InvalidInput(name)
-    }
   }
-  "NN " +
-  nn.to_string() +
-  "/4, NK " +
-  nk.to_string() +
-  "/4, XX " +
-  xx.to_string() +
-  "/4, IK " +
-  ik.to_string() +
-  "/4"
+  cases.length().to_string() + "/" + cases.length().to_string()
 }
