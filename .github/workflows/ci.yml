@@ -15,6 +15,8 @@ jobs:
         run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
       - name: Check
         run: moon check
+      - name: Build
+        run: moon build
       - name: Test
         run: moon test
       - name: Format

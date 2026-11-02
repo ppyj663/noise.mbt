@@ -119,6 +119,30 @@ ChaChaPoly 的 96 位 nonce 是 4 个 0 再加 `n` 的小端编码。AESGCM 使�
 
 向量文件是 `vectors/cacophony.json`，来源见 `vectors/ATTRIBUTION.md`。测试实际加载的是 `vectors_data.mbt` 里的紧凑 JSON，SHA-256 为 `abf46916f6dd7fb38e1d7476cb5c42c1f91afcdd3c3132f84542f8c1cb8de7f9`。
 
+## 仓库结构与规模
+
+默认分支是 `main`。完成的源码、README、许可证和提交历史都在这条分支上。
+
+```text
+noise.mbt/
+├── README.md
+├── LICENSE                 Apache-2.0
+├── NOTICE
+├── CHANGELOG.md
+├── source-attribution.md   规范、snow、mooncry、向量来源
+├── moon.mod
+├── moon.pkg
+├── *.mbt                   库实现与测试
+├── example/main.mbt        XX 握手示例
+├── vectors/                Cacophony 适用向量与署名
+├── scripts/check_repo.sh   本地仓库自查
+└── .github/workflows/ci.yml
+```
+
+`scripts/check_repo.sh` 统计的有效行数不含空行和 `//`、`///` 注释，也不把嵌入的向量文本算进实现。章程里的 4~10k 行是参考范围。当前实现规模以该脚本的输出为准。
+
+来源、许可证和移植范围见 [source-attribution.md](source-attribution.md)。
+
 ## 架构
 
 ```text
