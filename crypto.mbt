@@ -56,11 +56,23 @@ pub fn HashKind::block_len(self : HashKind) -> Int32 {
 }
 
 ///|
+/// SHA-256 via mooncry. Useful for deriving demo keys.
+pub fn sha256(data : Bytes) -> Bytes {
+  @lib.sha256(data)
+}
+
+///|
+/// Lower-case hex encoding via mooncry.
+pub fn to_hex(data : Bytes) -> String {
+  @lib.bytes_to_hex(data)
+}
+
+///|
 /// Unkeyed HASH(data).
 pub fn HashKind::digest(self : HashKind, data : Bytes) -> Bytes {
   match self {
     Sha256 => @lib.sha256(data)
-    Blake2s => @lib.blake2s(data, 32)
+    Blake2s => blake2s_256(data)
   }
 }
 
@@ -80,14 +92,14 @@ pub fn HashKind::hmac(self : HashKind, key : Bytes, message : Bytes) -> Bytes {
 fn hmac_blake2s(key : Bytes, message : Bytes) -> Bytes {
   let block = 64
   let k_prime = if key.length() > block {
-    pad_right(@lib.blake2s(key, 32), block)
+    pad_right(blake2s_256(key), block)
   } else {
     pad_right(key, block)
   }
   let ipad = xor_bytes(k_prime, repeat_byte(b'\x36', block))
   let opad = xor_bytes(k_prime, repeat_byte(b'\x5c', block))
-  let inner = @lib.blake2s(concat2(ipad, message), 32)
-  @lib.blake2s(concat2(opad, inner), 32)
+  let inner = blake2s_256(concat2(ipad, message))
+  blake2s_256(concat2(opad, inner))
 }
 
 ///|

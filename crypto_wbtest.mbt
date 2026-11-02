@@ -47,6 +47,31 @@ test "hmac blake2s" {
     Blake2s.hmac(b"key", b"The quick brown fox jumps over the lazy dog"),
     "f93215bb90d4af4c3061cd932fb169fb8bb8a91d0b4022baea1271e1323cd9a0",
   )
+  let key = Bytes::make(32, b'\x11')
+  expect_hex(
+    Blake2s.hmac(key, b""),
+    "d88f7f4ce5735e8de5349b0851e3e5b688094a99bee38219a6a20d3d4502da26",
+  )
+}
+
+///|
+test "blake2s exact block lengths" {
+  let b64 = Array::make(64, b'\x00')
+  let b128 = Array::make(128, b'\x00')
+  for i in 0..<64 {
+    b64[i] = (i % 256).to_byte()
+  }
+  for i in 0..<128 {
+    b128[i] = (i % 256).to_byte()
+  }
+  expect_hex(
+    blake2s_256(Bytes::from_array(b64[:])),
+    "56f34e8b96557e90c1f24b52d0c89d51086acf1b00f634cf1dde9233b8eaaa3e",
+  )
+  expect_hex(
+    blake2s_256(Bytes::from_array(b128[:])),
+    "1fa877de67259d19863a2a34bcc6962a2b25fcbf5cbecd7ede8f1fa36688a796",
+  )
 }
 
 ///|
