@@ -1,0 +1,24 @@
+noise.mbt
+Copyright 2026 ppyj663
+
+This product includes a MoonBit port of the Noise Protocol Framework handshake
+state machine. The port follows the structure of snow:
+
+  https://github.com/mcginty/snow
+  Copyright Jake McGinty and contributors
+  Licensed under the Apache License, Version 2.0
+  or the MIT License, at your option.
+
+Cryptographic primitives are provided by mooncry where noted in the README:
+
+  https://github.com/cc06b/mooncry
+  Copyright 2026 Solo Crypto Contributors
+  Licensed under the Apache License, Version 2.0.
+
+BLAKE2s-256 and HMAC-BLAKE2s are implemented in this repository. BLAKE2s is
+RFC 7693. mooncry 0.95.0's BLAKE2s is not used because it appends an extra
+empty block when the input length is a positive multiple of 64 bytes.
+
+Applicable Cacophony test vectors are vendored from snow's
+tests/vectors/cacophony.txt. The original suite is
+https://github.com/centromere/cacophony (Unlicense).

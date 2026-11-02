@@ -8,7 +8,7 @@ repository = "https://github.com/ppyj663/noise.mbt"
 
 license = "Apache-2.0"
 
-keywords = ["noise", "cryptography", "handshake", "chacha20", "x25519"]
+keywords = [ "noise", "cryptography", "handshake", "chacha20", "x25519" ]
 
 preferred_target = "native"
 
