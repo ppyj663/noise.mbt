@@ -39,9 +39,14 @@ jobs:
           $env:MOONBIT_INSTALL_VERSION = "${{ matrix.moonbit }}"
           irm https://cli.moonbitlang.com/install/powershell.ps1 | iex
 
-      - name: Put moon on PATH
-        shell: bash
+      - name: Put moon on PATH (Unix)
+        if: runner.os != 'Windows'
         run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Put moon on PATH (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Add-Content -Path $env:GITHUB_PATH -Value (Join-Path $env:USERPROFILE '.moon\bin')
 
       - name: Enable MSVC (Windows native)
         if: runner.os == 'Windows'
@@ -107,9 +112,14 @@ jobs:
           $env:MOONBIT_INSTALL_VERSION = "${{ matrix.moonbit }}"
           irm https://cli.moonbitlang.com/install/powershell.ps1 | iex
 
-      - name: Put moon on PATH
-        shell: bash
+      - name: Put moon on PATH (Unix)
+        if: runner.os != 'Windows'
         run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Put moon on PATH (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Add-Content -Path $env:GITHUB_PATH -Value (Join-Path $env:USERPROFILE '.moon\bin')
 
       - name: Enable MSVC (Windows native)
         if: runner.os == 'Windows'

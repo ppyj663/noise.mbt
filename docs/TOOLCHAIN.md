@@ -31,7 +31,7 @@ Windows 可以把同样的字符串赋给 `MOONBIT_INSTALL_VERSION`，再执行�
 
 `.github/workflows/ci.yml` 只用上述官方 installer，不会安装 nightly。
 
-- 库 job：Ubuntu 上跑 `latest` 和已核实的 `0.10.17+d971670cd`；Windows 上跑 `latest`。每条作业在检查前打印 `moon version --all`。Windows 原生编译会先启用 MSVC 开发者环境。
+- 库 job：Ubuntu 上跑 `latest` 和已核实的 `0.10.17+d971670cd`；Windows 上跑 `latest`。每条作业在检查前打印 `moon version --all`。Windows 原生编译会先启用 MSVC 开发者环境。向 GITHUB_PATH 追加路径时，Windows 必须写原生路径（例如 `%USERPROFILE%\.moon\bin`）；若写成 Git Bash 的 `/c/Users/...`，后续默认的 PowerShell 步骤会找不到 `moon`。
 - TCP job：只在 Ubuntu 与 Windows 的官方 `latest` 上跑。它不会在 0.10.17 上运行。
 
 本地可用 `scripts/accept.sh` 或 `scripts/accept.ps1` 复测当前工具链。脚本会跑库检查、两个根 example，并在存在 `core/async` 时跑 TCP，在 Python 能导入 `cryptography` 时跑 `scripts/fallback_oracle.py --check`。失败返回非 0。可选环境变量：

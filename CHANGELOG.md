@@ -6,7 +6,7 @@
 
 - 修复 Windows 上 TCP 短帧测试在监听套接字关闭过早时的失败（WSAENOTSOCK），并避免等待读取方时客户端未关闭造成的死锁。
 - 增加 `scripts/accept.sh` 与 `scripts/accept.ps1`，按当前工具链复测库、可选 TCP 和可选预言机，失败返回非 0。不运行、不改写基准结果。
-- CI 打印 `moon version --all`，在官方最新稳定工具链和已核实的 `0.10.17+d971670cd` 上检查库，并在 Windows 上运行库与 TCP job。说明见 `docs/TOOLCHAIN.md`。
+- CI 打印 `moon version --all`，在官方最新稳定工具链和已核实的 `0.10.17+d971670cd` 上检查库，并在 Windows 上运行库与 TCP job。Windows runner 向 GITHUB_PATH 写入原生 `.moon\bin` 路径，避免 Git Bash 的 `/c/Users/...` 形式让后续 PowerShell 步骤找不到 moon。说明见 `docs/TOOLCHAIN.md`。
 
 ## 0.2.0
 
