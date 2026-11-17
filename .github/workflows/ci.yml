@@ -13,6 +13,8 @@ jobs:
         run: curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
       - name: Put moon on PATH
         run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+      - name: Update registry
+        run: moon update
       - name: Check native and deny warnings
         run: moon check --deny-warn --target native
       # wasm-gc is typecheck only. This job does not run tests or the TCP module.
@@ -42,6 +44,8 @@ jobs:
       # example/tcp imports moonbitlang/async, which needs moonbitlang/core/async.
       # That import is absent from the core bundled with moonc 0.10.17.
       # This job expects moonc 0.10.19 or newer. It does not check the library root.
+      - name: Update TCP workspace registry
+        run: moon -C example/tcp update
       - name: Check TCP module
         run: moon -C example/tcp check --deny-warn --target native
       - name: Test TCP module
