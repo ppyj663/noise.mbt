@@ -62,7 +62,10 @@ pub async fn run_tcp_loopback() -> String {
   @async.with_task_group(root => {
     let server = @socket.TcpServer(@socket.Addr::parse("127.0.0.1:0"))
     let addr = server.addr
-    defer server.close()
+    // Close the listener only after child tasks finish. A function-scope
+    // `defer` would close it when this callback returns, while `accept`
+    // may still be running. On Windows that surfaces as WSAENOTSOCK.
+    root.add_defer(() => server.close())
     root.spawn_bg(() => responder(server))
     @async.sleep(20)
     box[0] = initiator(addr)
@@ -78,22 +81,27 @@ pub async fn run_tcp_short_frame() -> String {
   @async.with_task_group(root => {
     let server = @socket.TcpServer(@socket.Addr::parse("127.0.0.1:0"))
     let addr = server.addr
-    defer server.close()
-    root.spawn_bg(() => {
+    // Same listener lifetime as `run_tcp_loopback`: do not close the
+    // server until the accept/read task has finished.
+    root.add_defer(() => server.close())
+    let reader = root.spawn(() => {
       let (conn, _) = server.accept()
       defer conn.close()
       try {
         let _ = read_noise_frame(conn)
-        box[0] = "accepted"
+        "accepted"
       } catch {
-        @io.ReaderClosed => box[0] = "short-frame"
+        @io.ReaderClosed => "short-frame"
         err => raise err
       }
     })
     @async.sleep(20)
     let conn = @socket.Tcp::connect(addr)
-    defer conn.close()
+    // Close the client before waiting for the reader. Otherwise the
+    // server stays blocked in `read_exactly` and `reader.wait()` deadlocks.
     conn.write(b"\x00\x04")
+    conn.close()
+    box[0] = reader.wait()
   })
   box[0]
 }
