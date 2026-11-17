@@ -4,51 +4,136 @@ on:
   push:
   pull_request:
 
+# Official stable installer: https://cli.moonbitlang.com/install/unix.sh
+# and powershell.ps1. Default "latest" is the stable channel, not nightly.
+# The library minimum pin 0.10.17+d971670cd was checked against
+# https://cli.moonbitlang.com/binaries/0.10.17%2Bd971670cd/ (HTTP 200).
+# A bare "0.10.19" tag is not a valid installer version (HTTP 403).
+# TCP jobs are not run on 0.10.17 because that core lacks moonbitlang/core/async.
+
 jobs:
   library:
-    runs-on: ubuntu-latest
+    name: library (${{ matrix.os }}, ${{ matrix.moonbit }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            moonbit: latest
+          - os: ubuntu-latest
+            moonbit: "0.10.17+d971670cd"
+          - os: windows-latest
+            moonbit: latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install MoonBit
-        run: curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+
+      - name: Install MoonBit (Unix)
+        if: runner.os != 'Windows'
+        run: curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s "${{ matrix.moonbit }}"
+
+      - name: Install MoonBit (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:MOONBIT_INSTALL_VERSION = "${{ matrix.moonbit }}"
+          irm https://cli.moonbitlang.com/install/powershell.ps1 | iex
+
       - name: Put moon on PATH
+        shell: bash
         run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Enable MSVC (Windows native)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Show toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          moon version --all
+          command -v moon
+          command -v moonc
+
       - name: Update registry
         run: moon update
+
       - name: Check native and deny warnings
         run: moon check --deny-warn --target native
-      # wasm-gc is typecheck only. This job does not run tests or the TCP module.
+
+      # wasm-gc is typecheck only. This job does not run the TCP module.
       - name: Check wasm-gc
         run: moon check --target wasm-gc
+
       - name: Build native
         run: moon build --target native
+
       - name: Test native
         run: moon test --target native
+
       - name: Info
         run: moon info
+
       - name: Format
         run: moon fmt --check
+
       - name: Examples
         run: |
           moon run --target native example
           moon run --target native example/pipe
 
   tcp-example:
-    runs-on: ubuntu-latest
+    name: tcp (${{ matrix.os }}, ${{ matrix.moonbit }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            moonbit: latest
+          - os: windows-latest
+            moonbit: latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install MoonBit
-        run: curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+
+      - name: Install MoonBit (Unix)
+        if: runner.os != 'Windows'
+        run: curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s "${{ matrix.moonbit }}"
+
+      - name: Install MoonBit (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:MOONBIT_INSTALL_VERSION = "${{ matrix.moonbit }}"
+          irm https://cli.moonbitlang.com/install/powershell.ps1 | iex
+
       - name: Put moon on PATH
+        shell: bash
         run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Enable MSVC (Windows native)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Show toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          moon version --all
+          command -v moon
+          command -v moonc
+
       # example/tcp imports moonbitlang/async, which needs moonbitlang/core/async.
       # That import is absent from the core bundled with moonc 0.10.17.
-      # This job expects moonc 0.10.19 or newer. It does not check the library root.
+      # This job only runs official latest, which currently ships core/async.
       - name: Update TCP workspace registry
         run: moon -C example/tcp update
+
       - name: Check TCP module
         run: moon -C example/tcp check --deny-warn --target native
+
       - name: Test TCP module
         run: moon -C example/tcp test --target native --package ppyj663/noise-tcp-example
+
       - name: Run TCP loopback
         run: moon -C example/tcp run --target native .

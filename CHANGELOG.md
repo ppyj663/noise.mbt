@@ -1,5 +1,13 @@
 # 更新日志
 
+## Unreleased
+
+这些改动只在仓库里，不是新的 mooncakes 版本。已发布的 `ppyj663/noise@0.2.0` 保持不变。
+
+- 修复 Windows 上 TCP 短帧测试在监听套接字关闭过早时的失败（WSAENOTSOCK），并避免等待读取方时客户端未关闭造成的死锁。
+- 增加 `scripts/accept.sh` 与 `scripts/accept.ps1`，按当前工具链复测库、可选 TCP 和可选预言机，失败返回非 0。不运行、不改写基准结果。
+- CI 打印 `moon version --all`，在官方最新稳定工具链和已核实的 `0.10.17+d971670cd` 上检查库，并在 Windows 上运行库与 TCP job。说明见 `docs/TOOLCHAIN.md`。
+
 ## 0.2.0
 
 - 实现 Noise 10.2 的 `fallback`。`scripts/fallback_oracle.py`（cryptography 41.0.7）给出 `XXfallback`、`NNfallback` 和 `XXfallback+psk0` 的预期 JSON。
@@ -8,7 +16,7 @@
 - 传输明文超过 65519 字节时在加密前拒绝，不消耗 nonce。
 - `cacophony_report` 分开断言 944 条向量和 5664 条消息比较。
 - 基准脚本记录每次热身和 9 个样本。
-- 本版本只准备发布元数据，工作区里没有执行 `moon publish`。
+- 本版本已作为 `ppyj663/noise@0.2.0` 发布到 mooncakes。校验和与文档以注册表为准。
 
 ## 0.1.0
 

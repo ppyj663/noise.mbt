@@ -146,7 +146,7 @@ moon -C example/tcp test --target native --package ppyj663/noise-tcp-example
 moon -C example/tcp run --target native .
 ```
 
-GitHub Actions 把库和 TCP 分成两个 job。库 job 不调用 `example/tcp`。wasm-gc 在库 job 里只做 check。这些工作流还没有被这次改动触发，不能说 CI 全绿。本工作区没有执行 `moon publish`；`moon publish --dry-run` 在未登录时停在 “Registry login is required”，没有读取凭据。
+GitHub Actions 把库和 TCP 分成两个 job。库 job 不调用 `example/tcp`。wasm-gc 在库 job 里只做 check。库 job 在官方最新稳定工具链（Ubuntu、Windows）以及已核实可下载的 `0.10.17+d971670cd`（Ubuntu）上运行；TCP job 只在带 `core/async` 的官方最新稳定工具链上运行（Ubuntu、Windows），不会在 0.10.17 上跑。安装脚本、版本钉死方式和 Windows 上 `moonc` 命令行过长的说明见 [docs/TOOLCHAIN.md](docs/TOOLCHAIN.md)。本地可用 `scripts/accept.sh` 或 `scripts/accept.ps1` 按当前工具链复测，失败返回非 0。`ppyj663/noise@0.2.0` 已发布到 mooncakes，本轮仓库改动不再覆盖该版本。
 
 ## 基准
 
@@ -179,6 +179,9 @@ noise.mbt/
 ├── example/main.mbt        XX 握手示例
 ├── vectors/                Cacophony 适用向量与署名
 ├── scripts/check_repo.sh   本地仓库自查
+├── scripts/accept.sh       当前工具链验收（Unix）
+├── scripts/accept.ps1      当前工具链验收（Windows）
+├── docs/TOOLCHAIN.md       官方稳定版本与 Windows 排障
 └── .github/workflows/ci.yml
 ```
 
