@@ -10,8 +10,10 @@ pub struct Builder {
   priv mut prologue : Bytes
   priv mut local_static : Bytes?
   priv mut remote_static : Bytes?
+  priv mut remote_ephemeral : Bytes?
   priv mut local_ephemeral : Bytes?
   priv mut psk_pairs : Array[(Int32, Bytes)]
+  priv mut dh_policy : DhOutputPolicy
 }
 
 ///|
@@ -93,8 +95,10 @@ fn Builder::make(
     prologue: b"",
     local_static: None,
     remote_static: None,
+    remote_ephemeral: None,
     local_ephemeral: None,
     psk_pairs: [],
+    dh_policy: ReturnOutput,
   }
 }
 
@@ -134,6 +138,20 @@ pub fn Builder::remote_public_key(
 }
 
 ///|
+/// Public ephemeral already known from a pre-message, such as Alice's `e`
+/// in `XXfallback`. The responder must set this before building.
+pub fn Builder::remote_ephemeral_public(
+  self : Builder,
+  key : Bytes,
+) -> Builder raise NoiseError {
+  if key.length() != self.dh.dh_len() {
+    raise InvalidInput("remote ephemeral key has the wrong length")
+  }
+  self.remote_ephemeral = Some(key)
+  self
+}
+
+///|
 /// Private key used for the local ephemeral.
 /// If the pattern has a pre-message `e`, this key is installed up front.
 /// Otherwise it is used the next time this party writes an `e` token.
@@ -145,6 +163,18 @@ pub fn Builder::local_ephemeral_private(
     raise InvalidInput("ephemeral private key has the wrong length")
   }
   self.local_ephemeral = Some(key)
+  self
+}
+
+///|
+/// Ask `DH` to raise `InvalidInput` when its output is all zeros.
+///
+/// This is the alternative allowed by Noise rev 34 sections 12.1 and 12.2.
+/// The spec discourages it and says it does not improve security. A handshake
+/// that passes this check has still not authenticated the peer's identity;
+/// the application must decide whether a remote static public key is acceptable.
+pub fn Builder::reject_all_zero_dh(self : Builder) -> Builder {
+  self.dh_policy = RejectAllZero
   self
 }
 

@@ -37,11 +37,12 @@ pub fn Transport::write_message(
   self : Transport,
   payload : Bytes,
 ) -> Bytes raise NoiseError {
-  let message = self.send.encrypt_with_ad(b"", payload)
-  if message.length() > 65535 {
+  // Reject before encryption so a too-large payload does not consume a nonce.
+  let overhead = if self.send.has_key() { 16 } else { 0 }
+  if payload.length() > 65535 - overhead {
     raise MessageTooLong
   }
-  message
+  self.send.encrypt_with_ad(b"", payload)
 }
 
 ///|

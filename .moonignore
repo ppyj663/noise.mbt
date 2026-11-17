@@ -1,0 +1,5 @@
+# Replaces .gitignore for packaging. Keep generated files out, and do not
+# ship the TCP module or its async dependency.
+/example/tcp/
+pkg.generated.mbti
+.mooncakes/

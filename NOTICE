@@ -15,10 +15,19 @@ Cryptographic primitives are provided by mooncry where noted in the README:
   Copyright 2026 Solo Crypto Contributors
   Licensed under the Apache License, Version 2.0.
 
-BLAKE2s-256 and HMAC-BLAKE2s are implemented in this repository. BLAKE2s is
-RFC 7693. mooncry 0.95.0's BLAKE2s is not used because it appends an extra
-empty block when the input length is a positive multiple of 64 bytes.
+BLAKE2s-256, BLAKE2b-512, and the corresponding HMAC constructions are
+implemented in this repository from RFC 7693 and RFC 2104. mooncry 0.95.0's
+BLAKE2s and BLAKE2b are not used because they append an extra empty block when
+the input length is a positive multiple of the block size.
 
 Applicable Cacophony test vectors are vendored from snow's
 tests/vectors/cacophony.txt. The original suite is
 https://github.com/centromere/cacophony (Unlicense).
+
+The TCP example is a separate module under example/tcp. It links
+moonbitlang/async 0.22.9 and is not a dependency of the library.
+That package is Copyright 2025 International Digital Economy Academy
+and licensed under the Apache License, Version 2.0:
+https://github.com/moonbitlang/async
+The example does not copy its source. The published library archive
+omits example/tcp.

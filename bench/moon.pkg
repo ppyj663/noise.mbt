@@ -1,0 +1,6 @@
+import {
+  "ppyj663/noise",
+  "moonbitlang/core/bench" @clock,
+}
+
+pkgtype(kind: "executable")

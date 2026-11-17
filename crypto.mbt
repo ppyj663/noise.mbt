@@ -6,6 +6,19 @@ pub enum DhKind {
 }
 
 ///|
+/// What to do when `DH` returns an all-zero output.
+///
+/// Noise rev 34 sections 12.1 and 12.2 say invalid public keys produce an
+/// all-zero output. Detecting that output and signaling an error is allowed,
+/// but the spec discourages it: it adds variance and does not improve
+/// security. The default is therefore `ReturnOutput`. `RejectAllZero` is an
+/// application policy, not proof that the peer holds a private key.
+pub enum DhOutputPolicy {
+  ReturnOutput
+  RejectAllZero
+}
+
+///|
 /// AEAD cipher. `ChaChaPoly` is RFC 8439; `AesGcm` is AES-256-GCM.
 pub enum CipherKind {
   ChaChaPoly
@@ -222,7 +235,25 @@ fn aead_decrypt(
 }
 
 ///|
+/// True when every byte of a DH output is zero.
+///
+/// Noise rev 34 sections 12.1 and 12.2 define this as the output for an
+/// invalid public key. It is not, by itself, an authentication decision.
+pub fn dh_output_is_all_zero(shared : Bytes) -> Bool {
+  let mut acc = 0
+  for i in 0..<shared.length() {
+    acc = acc | shared[i].to_int()
+  }
+  acc == 0
+}
+
+///|
 /// X25519(scalar, peer public). The scalar is clamped inside mooncry.
+///
+/// A 32-byte public key is accepted, including the all-zero value and other
+/// low-order points. mooncry's ladder then returns 32 zero bytes for those
+/// inputs (RFC 7748 section 6.1). Wrong lengths raise `InvalidInput`.
+/// Whether an all-zero *output* fails the handshake is `DhOutputPolicy`.
 pub fn dh_25519(scalar : Bytes, peer_public : Bytes) -> Bytes raise NoiseError {
   match @lib.x25519_or(scalar, peer_public) {
     Ok(shared) => shared
@@ -262,7 +293,10 @@ pub fn public_key_25519(scalar : Bytes) -> Bytes raise NoiseError {
 }
 
 ///|
-/// X448(scalar, peer public). The scalar is 56 bytes.
+/// X448(scalar, peer public). The scalar and public key are 56 bytes.
+///
+/// Wrong lengths raise `InvalidInput`. An all-zero public key completes and
+/// returns 56 zero bytes. Noise rev 34 section 12.2, not an extra identity check.
 pub fn dh_x448(scalar : Bytes, peer_public : Bytes) -> Bytes raise NoiseError {
   match @lib.x448_or(scalar, peer_public) {
     Ok(shared) => shared

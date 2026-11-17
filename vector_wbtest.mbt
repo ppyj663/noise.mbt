@@ -1,6 +1,16 @@
 ///|
 test "cacophony vectors for supported suites" {
-  assert_eq(verify_cacophony_vectors(), "944/944")
+  let report = cacophony_report()
+  assert_eq(report.vectors_loaded, 944)
+  assert_eq(report.vectors_executed, 944)
+  assert_eq(report.skipped, 0)
+  assert_eq(report.messages_compared, 5664)
+  assert_eq(
+    report.vectors_executed.to_string() +
+    "/" +
+    report.vectors_loaded.to_string(),
+    "944/944",
+  )
 }
 
 ///|

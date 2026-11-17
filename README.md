@@ -4,21 +4,25 @@ Noise Protocol Framework 的 MoonBit 握手库。实现规范中的 `CipherState
 
 内置握手模式覆盖规范里的单向模式（N、K、X）、基础交互模式（NN、NK、NX、XN、XK、XX、KN、KK、KX、IN、IK、IX）和延迟模式（NK1、XX1、X1X1 等）。`psk0`、`psk2` 这类修饰符会按规范插入 `psk`。算法组合是 **DH 25519 / 448**、**ChaChaPoly**、**AESGCM**、**SHA256 / SHA512**、**BLAKE2s / BLAKE2b**。
 
-This library is a MoonBit implementation of the Noise Protocol Framework handshake. It covers the three core state machines, the patterns NN / NK / XX / IK, and transport encryption with rekey. Patterns are parsed from pattern strings so more patterns can be added without changing the state machine.
+This library is a MoonBit implementation of the Noise Protocol Framework handshake. It covers the three core state machines, one-way, fundamental, and deferred patterns, `pskN`, `fallback`, and transport encryption with rekey.
 
 ## 安装
 
 仓库地址：<https://github.com/ppyj663/noise.mbt>。模块名是 `ppyj663/noise`。
 
+库根只依赖 [cc06b/mooncry](https://github.com/cc06b/mooncry) `0.95.0`（Apache-2.0）。不依赖 `moonbitlang/async`。在 moonc 0.10.17 上应能执行下面的库命令；本仓库在 moonc 0.10.20 上复测。
+
 ```bash
 git clone https://github.com/ppyj663/noise.mbt
 cd noise.mbt
-moon check
-moon test
-moon run example
+moon update
+moon check --deny-warn --target native
+moon test --target native
+moon run --target native example
+moon run --target native example/pipe
 ```
 
-依赖 [cc06b/mooncry](https://github.com/cc06b/mooncry) `0.95.0`（Apache-2.0）。`moon.mod` 已经写好这个依赖，`moon test` 会自动下载。
+TCP 不在这些命令里。它是 `example/tcp` 里的独立模块，见下文。
 
 ## 快速开始
 
@@ -50,13 +54,26 @@ let ct = send.write_message(@utf8.encode("传输消息：ping"))
 let _pt = recv.read_message(ct)
 ```
 
-`moon run example` 的传输阶段还会做一次 `rekey`，并打印握手哈希。
+`moon run example` 的传输阶段还会做一次 `rekey`，并打印握手哈希。`moon run example/pipe` 在同一进程里串起 XX 和 XXfallback，它不是 TCP。
+
+TCP 回环在独立模块 `example/tcp`，需要带 `moonbitlang/core/async` 的工具链。moonc 0.10.17 的 core 没有这个导入，所以该示例注明 moonc 0.10.19 或更新；这里用 moonc 0.10.20 跑通。它不进入库根的 `moon check` / `moon test`。
+
+```bash
+moon -C example/tcp update
+moon -C example/tcp check --deny-warn --target native
+moon -C example/tcp test --target native --package ppyj663/noise-tcp-example
+moon -C example/tcp run --target native .
+```
+
+`example/tcp/moon.work` 的成员是 `.` 和 `../..`。因此 `ppyj663/noise@0.2.0` 解析到本仓库的库，而不是 mooncakes。这是文档中的 workspace 本地依赖：<https://docs.moonbitlang.com/en/latest/toolchain/moon/module.html#dependency-management>。`moon.mod` 的 import 不能写本地 path，所以没有把 path 写进库根。
+
+该示例在 `127.0.0.1` 的临时端口上收发，每条 Noise 消息前有 16 位大端长度，超过 65535 字节会在写入套接字之前拒绝。生产密钥必须来自 CSPRNG。发布后的 `ppyj663/noise` 不包含这个目录，也不依赖 async。要跑 TCP，用仓库，不要用已发布的库包。
 
 ## API 概览
 
 | 类型 | 作用 |
 | --- | --- |
-| `Builder` | 解析 `Noise_<pattern>_<dh>_<cipher>_<hash>`，设置 prologue、静态密钥、对方静态公钥、本方临时私钥、PSK |
+| `Builder` | 解析 `Noise_<pattern>_<dh>_<cipher>_<hash>`，设置 prologue、静态密钥、对方静态公钥、预消息临时公钥、本方临时私钥、PSK。`reject_all_zero_dh` 是可选策略 |
 | `Pattern` | `by_name("XX")` 或 `parse` 一段模式字符串。`Builder::from_pattern` 把自定义模式配到协议名上 |
 | `Handshake` | `write_message` / `read_message`。完成后 `handshake_hash` 与 `into_transport` |
 | `Transport` | 空关联数据的传输加密。`rekey_send` / `rekey_recv` 不重置 nonce。`set_receiving_nonce` 对应规范 11.4 |
@@ -87,18 +104,63 @@ ChaChaPoly 的 96 位 nonce 是 4 个 0 再加 `n` 的小端编码。AESGCM 使�
 
 ## 测试
 
-`moon test` 当前 **23** 项全部通过，其中包括：
+最近一次完整 `moon test --target native` 的通过数以 `docs/VERIFICATION.md` 和测试日志为准，不要把旧的 “40 项” 当成当前数字。覆盖包括：
 
-- RFC 7748 X25519 与 X448、RFC 8439 ChaCha20-Poly1305、NIST AES-GCM 空明文、FIPS SHA-256 / SHA-512、RFC 4231 HMAC、RFC 7693 BLAKE2s / BLAKE2b
+- RFC 7748 的 X25519 / X448 运算向量、RFC 8439 ChaCha20-Poly1305、NIST AES-GCM 空明文、FIPS SHA-256 / SHA-512、RFC 4231 HMAC、RFC 7693 BLAKE2s / BLAKE2b
 - BLAKE2s、BLAKE2b 在整数个分组上的向量，以及对应的 HMAC
 - CipherState 的往返、篡改、rekey、nonce 耗尽
-- 错误路径：乱序读写、篡改密文、超过 65535 字节、认证失败后握手作废
-- 自定义模式字符串与带 `psk` 记号的往返
-- 下方 16 条 Cacophony 向量（每条 6 个消息，含握手后的传输消息）
+- 一条固定传输密文的每个更短前缀、空消息、65535 字节上限、超限不消耗 nonce、认证失败后握手作废且不返回明文、重复读取、nonce 耗尽、rekey。这不是“所有随机输入”或“所有截断输入”的全称命题
+- 全零和列出的低阶 X25519 公钥、全零 X448 公钥、错误长度。默认返回全零 DH 输出。`reject_all_zero_dh` 可选拒绝，这不是身份认证
+- 自定义模式字符串、`psk`、`XXfallback`、`NNfallback`、`XXfallback+psk0`，以及 `scripts/fallback_oracle.py` 的预期 JSON
+- 内存管道 `example/pipe`。TCP 的 3 项测试属于 `example/tcp`，不计入库根的 `moon test`
 
-Cacophony 中本库支持的组合一共 **944** 条：59 个模式名（含 `psk0` / `psk2` 等）× DH 25519/448 × ChaChaPoly/AESGCM × SHA256/SHA512/BLAKE2s/BLAKE2b。`verify_cacophony_vectors()` 在全部通过时返回 `944/944`。单向模式的传输消息只由发起方发送。
+Cacophony 中本库执行的组合是 **944** 条向量、**5664** 条消息比较、**0** 条跳过。`cacophony_report()` 把这三个数分开断言，不靠一个笼统的通过字符串代替计数。单向模式 `N` / `K` / `X` 的传输消息只由发起方发送。`NNfallback` 虽然只剩一条握手消息，但那条由响应方发送，下一条传输由发起方发送。
 
-向量文件是 `vectors/cacophony.json`，来源见 `vectors/ATTRIBUTION.md`。测试实际加载的是 `vectors_data.mbt` 里的紧凑 JSON，SHA-256 为 `abf46916f6dd7fb38e1d7476cb5c42c1f91afcdd3c3132f84542f8c1cb8de7f9`。
+向量文件是 `vectors/cacophony.json`，来源见 `vectors/ATTRIBUTION.md`。测试实际加载的是 `vectors_data.mbt` 里的紧凑 JSON，SHA-256 为 `e2f1ddfbf5297125bdd10558ba7701fbae5d5b2b423b65d022d013ad066aacd0`。
+
+`fallback` 把发起方第一条可作预消息的报文（`e`、`s` 或 `e, s`）改成发起方预消息，并由响应方发送下一条。DH 记号不交换。协议名会进入 `h`，所以 `XXfallback` 不是 XX 的续传。响应方必须事先调用 `remote_ephemeral_public`。可复现预言机是 `scripts/fallback_oracle.py`，预期输出是 `scripts/fallback_oracle.json`（cryptography 41.0.7）。`python3 scripts/fallback_oracle.py --check` 会重算并比对。
+
+## 安装与使用
+
+```bash
+git clone https://github.com/ppyj663/noise.mbt
+cd noise.mbt
+moon update
+moon check --deny-warn --target native
+moon check --target wasm-gc
+moon test --target native
+moon fmt --check
+moon info
+moon run --target native example
+moon run --target native example/pipe
+python3 scripts/fallback_oracle.py --check
+```
+
+库的直接依赖只有 `cc06b/mooncry@0.95.0`。模块名是 `ppyj663/noise`。`.moonignore` 排除 `example/tcp/`，所以 `moon package` 的文件列表不包含 TCP 模块，消费者不会因此装上 async。
+
+发布之后，依赖方使用已发布的 `ppyj663/noise`，仍然只需要 mooncry。TCP 示例不会出现在那个包里。仓库里的 TCP 命令是：
+
+```bash
+moon -C example/tcp update
+moon -C example/tcp test --target native --package ppyj663/noise-tcp-example
+moon -C example/tcp run --target native .
+```
+
+GitHub Actions 把库和 TCP 分成两个 job。库 job 不调用 `example/tcp`。wasm-gc 在库 job 里只做 check。这些工作流还没有被这次改动触发，不能说 CI 全绿。本工作区没有执行 `moon publish`；`moon publish --dry-run` 在未登录时停在 “Registry login is required”，没有读取凭据。
+
+## 基准
+
+`scripts/bench.sh` 用 `moon run --target native --release bench` 计时。时钟是 MoonBit `monotonic_clock`，单位微秒。每个项目先记 2 次热身，再记 9 次样本；`samples.jsonl` 里每一行是一次热身、一次样本或一行汇总，不是只有汇总。项目包括 NN / XX / IK 的 ChaChaPoly 与 AESGCM 空握手，两种加密下 64 / 1024 / 8192 字节的传输加密和解密，以及 ChaCha 的 rekey。密钥由固定标签做 SHA-256，只给测试和基准用。`meta.json` 记录基线 commit、工作区是否脏、源码树 SHA-256、工具链和 CPU。补丁 SHA-256 在补丁封存后的验证日志里，不写进被补丁包含的 meta，避免自引用。这些数字只描述跑出它们的那一台机器。
+
+## 安全限制
+
+本库没有经过独立安全审计。
+
+Noise rev 34 第 12.1 和 12.2 节规定，无效公钥的 `DH` 输出是全零。默认实现返回这个输出，以保持和规范主规则以及现有实现的一致。同一节允许检测到全零后改报错，但写明这样做增加差异、并不提高安全性。`Builder::reject_all_zero_dh` 提供这个可选项。无论选哪一种，握手成功都不表示对方身份已被接受。第 14 节把“远程静态公钥是否可信”留给应用，例如证书、预共享名单或 pinning。全零 DH 也不能被当成“对方知道某个公钥”。NN 没有静态密钥，完成 NN 只说明双方算出了相同的临时 DH，不是身份认证。
+
+不提供 CSPRNG，不记录已用 nonce，重放防护由调用方负责。认证失败会丢弃握手或拒绝传输明文。`n == 2^64-1` 不能再加密。传输明文超过 65519 字节会在加密前拒绝，避免白白消耗 nonce。
+
+出处：<https://noiseprotocol.org/noise.html> ，修订 34，2026-11-17 抓取。第 4.1 节要求无效公钥要么给出只依赖公钥的输出，要么报错。第 12.1 / 12.2 节选择全零输出，并劝阻改为报错。第 14 节 “Misusing public keys as secrets” 说明无效公钥会造成可预测的全零 DH。RFC 7748 第 6.1 和 7 节只说明曲线运算和 cofactor，不代替上述 Noise 条款。
 
 ## 仓库结构与规模
 
@@ -156,12 +218,7 @@ Transport (Split 得到的两个 CipherState)
 
 mooncry 0.95.0 的 `blake2s` / `blake2b` 在输入长度是分组的正整数倍时，会把最后一个满分组当成非结束分组，再多压缩一个空的结束分组。Noise 的 `MixHash` 和 `Split` 会走到这个长度，因此这两条哈希在本仓库实现。
 
-尚未实现、调用对应协议名会返回 `Unsupported`：
-
-- `fallback` 修饰符
-- 多个 `psk` 修饰符可以同时出现，例如 `NNpsk0+psk2`；每个修饰符使用 `Builder::psks` 按出现顺序提供的 32 字节密钥
-- 全零 DH 输出按规范建议的做法原样返回，不额外报错
-- 不提供 CSPRNG，也不记录已用 nonce。重放防护由调用方在 `set_receiving_nonce` 之外自己做（规范 11.4）
+仍不支持、会返回 `Unsupported` 的名字包括 `hfs` 以及第一条消息不能当成预消息的 `fallback`（例如 `NKfallback`）。`pskN` 与 `fallback` 按名字里的顺序应用。`XXpsk0+fallback` 不合法，因为插入 `psk` 后的第一条消息不再是预消息。多个 PSK 用 `Builder::psks` 按修饰符出现顺序提供。
 
 ## 移植来源与许可证
 
@@ -175,4 +232,4 @@ Cacophony 测试向量经 snow 的 `tests/vectors/cacophony.txt` 收录，原始
 
 ## English summary
 
-`noise.mbt` implements the Noise handshake for MoonBit, including the one-way, fundamental, and deferred patterns, `pskN` modifiers, X25519, X448, ChaChaPoly, AES-GCM, SHA-256, SHA-512, BLAKE2s, and BLAKE2b. `moon test` checks all 944 applicable Cacophony vectors. BLAKE2s and BLAKE2b are implemented in this repository because mooncry 0.95.0 mishandles inputs whose length is a positive multiple of the hash block size.
+`noise.mbt` is a MoonBit Noise handshake library: one-way, fundamental, and deferred patterns, `pskN`, `fallback` (including `XXfallback`), X25519, X448, ChaChaPoly, AES-GCM, SHA-256, SHA-512, BLAKE2s, and BLAKE2b. It is not a claim to be the only such library, and it has not had an independent security audit. `moon test` checks the 944 vendored Cacophony vectors plus an independent Python oracle for `XXfallback`. BLAKE2s and BLAKE2b are implemented in this repository.

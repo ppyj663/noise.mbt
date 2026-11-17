@@ -65,7 +65,9 @@ fn split_pattern_name(
     }
     if name.has_prefix(base) {
       let rest = name[base.length():].to_owned()
-      if rest.has_prefix("psk") || rest.has_prefix("+") {
+      if rest.has_prefix("psk") ||
+        rest.has_prefix("fallback") ||
+        rest.has_prefix("+") {
         return (base, parse_modifier_list(rest))
       }
     }
@@ -82,7 +84,7 @@ fn parse_modifier_list(rest : String) -> Array[String] raise NoiseError {
     if word.length() == 0 {
       continue
     }
-    if !word.has_prefix("psk") {
+    if word != "fallback" && !word.has_prefix("psk") {
       raise Unsupported("modifier " + word)
     }
     modifiers.push(word)

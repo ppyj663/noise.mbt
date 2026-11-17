@@ -1,0 +1,17 @@
+{
+  "commit": "71fe9cf0d38ff6509ab34e719ead8e228d7aa6a5",
+  "dirty": true,
+  "date_utc": "2026-11-17T08:16:14Z",
+  "moon": "moon 0.1.20261104 (940aa18 2026-11-04)",
+  "moonc": "moonc v0.10.20+65efd5b93 (2026-11-05) ~/.moon/bin/moonc",
+  "target": "native",
+  "optimize": "release",
+  "os": "Linux 6.12.113+ x86_64",
+  "cpu": "Intel(R) Xeon(R) Processor",
+  "clock": "moonbitlang/core/bench monotonic_clock, microseconds",
+  "warmup": 2,
+  "samples": 9,
+  "source_tree_sha256": "3dec70a5ee5e9f423d83b28b6e1ccffc7f4606be51a675c359ad38d3a444248c",
+  "patch_sha256": "recorded in the verification log after the patch is sealed",
+  "keys": "fixed labels hashed with SHA-256; not for production"
+}

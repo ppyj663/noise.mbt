@@ -5,7 +5,7 @@ on:
   pull_request:
 
 jobs:
-  moon:
+  library:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -13,13 +13,38 @@ jobs:
         run: curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
       - name: Put moon on PATH
         run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
-      - name: Check
-        run: moon check
-      - name: Build
-        run: moon build
-      - name: Test
-        run: moon test
+      - name: Check native and deny warnings
+        run: moon check --deny-warn --target native
+      # wasm-gc is typecheck only. This job does not run tests or the TCP module.
+      - name: Check wasm-gc
+        run: moon check --target wasm-gc
+      - name: Build native
+        run: moon build --target native
+      - name: Test native
+        run: moon test --target native
+      - name: Info
+        run: moon info
       - name: Format
         run: moon fmt --check
-      - name: Example
-        run: moon run example
+      - name: Examples
+        run: |
+          moon run --target native example
+          moon run --target native example/pipe
+
+  tcp-example:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install MoonBit
+        run: curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+      - name: Put moon on PATH
+        run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+      # example/tcp imports moonbitlang/async, which needs moonbitlang/core/async.
+      # That import is absent from the core bundled with moonc 0.10.17.
+      # This job expects moonc 0.10.19 or newer. It does not check the library root.
+      - name: Check TCP module
+        run: moon -C example/tcp check --deny-warn --target native
+      - name: Test TCP module
+        run: moon -C example/tcp test --target native --package ppyj663/noise-tcp-example
+      - name: Run TCP loopback
+        run: moon -C example/tcp run --target native .

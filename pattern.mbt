@@ -28,9 +28,10 @@ pub struct Pattern {
   priv mut name : String
   priv pre_i : Array[Token]
   priv pre_r : Array[Token]
-  priv messages : Array[Array[Token]]
+  priv mut messages : Array[Array[Token]]
   priv mut is_psk : Bool
   priv psk_slots : Array[Int32]
+  priv mut responder_first : Bool
 }
 
 ///|
@@ -49,8 +50,11 @@ pub fn Pattern::has_psk(self : Pattern) -> Bool {
 }
 
 ///|
-/// True when the pattern has a single handshake message. Transport then
-/// stays in that direction, which is how the one-way patterns behave.
+/// True when one handshake message remains.
+///
+/// For `N`, `K`, and `X` the initiator sends that message and later transport.
+/// A fallback pattern such as `NNfallback` can also have one message; use
+/// `responder_sends_first` and `Handshake::initiator_sends_at` for the direction.
 pub fn Pattern::is_oneway(self : Pattern) -> Bool {
   self.messages.length() == 1
 }
@@ -61,12 +65,23 @@ pub fn Pattern::psk_slots(self : Pattern) -> Array[Int32] {
 }
 
 ///|
+/// True when the first handshake message is sent by the responder.
+/// This is the `fallback` modifier from Noise section 10.2.
+pub fn Pattern::responder_sends_first(self : Pattern) -> Bool {
+  self.responder_first
+}
+
+///|
 pub fn Pattern::by_name(name : String) -> Pattern raise NoiseError {
   let (base, modifiers) = split_pattern_name(name)
   let pattern = parse_pattern(pattern_definition(base))
   pattern.name = name
   for modifier in modifiers {
-    pattern.apply_psk(parse_psk_index(modifier))
+    if modifier == "fallback" {
+      pattern.apply_fallback()
+    } else {
+      pattern.apply_psk(parse_psk_index(modifier))
+    }
   }
   pattern
 }
@@ -135,7 +150,15 @@ fn parse_pattern(definition : String) -> Pattern raise NoiseError {
   if messages.length() == 0 {
     raise InvalidInput("pattern has no handshake messages")
   }
-  { name: header, pre_i, pre_r, messages, is_psk, psk_slots, }
+  {
+    name: header,
+    pre_i,
+    pre_r,
+    messages,
+    is_psk,
+    psk_slots,
+    responder_first: false,
+  }
 }
 
 ///|
@@ -157,6 +180,60 @@ fn Pattern::apply_psk(self : Pattern, slot : Int32) -> Unit raise NoiseError {
   }
   self.psk_slots.push(slot)
   self.is_psk = true
+}
+
+///|
+/// Noise section 10.2. The initiator's first message must be `e`, `s`, or
+/// `e, s`. It becomes an initiator pre-message, and the responder sends
+/// the next handshake message. DH tokens are not swapped.
+fn Pattern::apply_fallback(self : Pattern) -> Unit raise NoiseError {
+  if self.responder_first {
+    raise InvalidInput("fallback was already applied")
+  }
+  if self.messages.length() == 0 {
+    raise InvalidInput("fallback requires a first message")
+  }
+  let first = self.messages[0]
+  if first.length() == 0 || first.length() > 2 {
+    raise InvalidInput("fallback first message must be e, s, or e, s")
+  }
+  let mut saw_e = false
+  let mut saw_s = false
+  for token in first {
+    match token {
+      E =>
+        if saw_e {
+          raise InvalidInput("fallback first message repeats e")
+        } else {
+          saw_e = true
+        }
+      S =>
+        if saw_s {
+          raise InvalidInput("fallback first message repeats s")
+        } else {
+          saw_s = true
+        }
+      _ => raise InvalidInput("fallback first message must be e, s, or e, s")
+    }
+  }
+  if saw_e && tokens_contain(self.pre_i, E) {
+    raise InvalidInput("initiator already has a pre-message e")
+  }
+  if saw_s && tokens_contain(self.pre_i, S) {
+    raise InvalidInput("initiator already has a pre-message s")
+  }
+  for token in first {
+    self.pre_i.push(token)
+  }
+  let rest : Array[Array[Token]] = []
+  for i in 1..<self.messages.length() {
+    rest.push(self.messages[i])
+  }
+  if rest.length() == 0 {
+    raise InvalidInput("fallback leaves no handshake messages")
+  }
+  self.messages = rest
+  self.responder_first = true
 }
 
 ///|
@@ -204,8 +281,13 @@ fn parse_token(word : String) -> Token raise NoiseError {
 }
 
 ///|
-fn pattern_sender_is_initiator(index : Int32) -> Bool {
-  index % 2 == 0
+fn pattern_sender_is_initiator(pattern : Pattern, index : Int32) -> Bool {
+  let even = index % 2 == 0
+  if pattern.responder_first {
+    !even
+  } else {
+    even
+  }
 }
 
 ///|
@@ -235,7 +317,7 @@ fn pattern_needs_local_static(pattern : Pattern, initiator : Bool) -> Bool {
   }
   let mut index = 0
   for message in pattern.messages {
-    if pattern_sender_is_initiator(index) == initiator &&
+    if pattern_sender_is_initiator(pattern, index) == initiator &&
       tokens_contain(message, S) {
       return true
     }
@@ -247,7 +329,13 @@ fn pattern_needs_local_static(pattern : Pattern, initiator : Bool) -> Bool {
 ///|
 fn pattern_needs_remote_static(pattern : Pattern, initiator : Bool) -> Bool {
   let pre = if initiator { pattern.pre_r } else { pattern.pre_i }
-  tokens_contain(pre, S) || tokens_contain(pre, E)
+  tokens_contain(pre, S)
+}
+
+///|
+fn pattern_needs_remote_ephemeral(pattern : Pattern, initiator : Bool) -> Bool {
+  let pre = if initiator { pattern.pre_r } else { pattern.pre_i }
+  tokens_contain(pre, E)
 }
 
 ///|

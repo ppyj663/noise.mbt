@@ -26,6 +26,7 @@ pub struct Handshake {
   priv random : ((Int32) -> Bytes)?
   priv is_psk : Bool
   priv psk_pairs : Array[(Int32, Bytes)]
+  priv dh_policy : DhOutputPolicy
   priv mut send_cs : CipherState?
   priv mut recv_cs : CipherState?
 }
@@ -43,6 +44,29 @@ pub fn Handshake::is_my_turn(self : Handshake) -> Bool {
 ///|
 pub fn Handshake::is_oneway(self : Handshake) -> Bool {
   self.pattern.is_oneway()
+}
+
+///|
+/// True when this pattern's first handshake message is sent by the responder.
+pub fn Handshake::responder_sends_first(self : Handshake) -> Bool {
+  self.pattern.responder_sends_first()
+}
+
+///|
+/// Whether the initiator sends handshake or transport message `index`.
+///
+/// Fallback is checked first. `NNfallback` has one remaining message, so
+/// `is_oneway` is true, but that message is sent by the responder. One-way
+/// patterns `N`, `K`, and `X` are not fallback patterns, so the initiator
+/// keeps sending.
+pub fn Handshake::initiator_sends_at(self : Handshake, index : Int32) -> Bool {
+  if self.responder_sends_first() {
+    index % 2 == 1
+  } else if self.is_oneway() {
+    true
+  } else {
+    index % 2 == 0
+  }
 }
 
 ///|
@@ -85,7 +109,11 @@ fn Handshake::create(
     sym,
     pattern,
     initiator,
-    my_turn: initiator,
+    my_turn: if pattern.responder_sends_first() {
+      !initiator
+    } else {
+      initiator
+    },
     index: 0,
     failed: false,
     moved: false,
@@ -94,12 +122,13 @@ fn Handshake::create(
     e_priv: None,
     e_pub: None,
     rs: builder.remote_static,
-    re: None,
+    re: builder.remote_ephemeral,
     ephemeral_once: None,
     dh,
     random,
     is_psk: pattern.has_psk(),
     psk_pairs: builder.psk_pairs,
+    dh_policy: builder.dh_policy,
     send_cs: None,
     recv_cs: None,
   }
@@ -132,6 +161,15 @@ fn Handshake::create(
       Some(pk) =>
         if pk.length() != dh.dh_len() {
           raise InvalidInput("remote static key has the wrong length")
+        }
+      None => raise MissingKey
+    }
+  }
+  if pattern_needs_remote_ephemeral(pattern, initiator) {
+    match hs.re {
+      Some(pk) =>
+        if pk.length() != dh.dh_len() {
+          raise InvalidInput("remote ephemeral key has the wrong length")
         }
       None => raise MissingKey
     }
@@ -244,7 +282,19 @@ fn Handshake::dh_pair(
   peer : Bytes?,
 ) -> Bytes raise NoiseError {
   match (scalar, peer) {
-    (Some(sk), Some(pk)) => dh_exchange(self.dh, sk, pk)
+    (Some(sk), Some(pk)) => {
+      let shared = dh_exchange(self.dh, sk, pk)
+      match self.dh_policy {
+        RejectAllZero =>
+          if dh_output_is_all_zero(shared) {
+            raise InvalidInput(
+              "dh output is all zeros; this optional rejection is not peer authentication",
+            )
+          }
+        ReturnOutput => ()
+      }
+      shared
+    }
     _ => raise MissingKey
   }
 }

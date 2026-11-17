@@ -196,11 +196,10 @@ fn run_vector(case : VecCase) -> Unit raise Error {
   }
   let initiator = init_builder.build_initiator(None)
   let responder = resp_builder.build_responder(None)
-  let one_way = initiator.is_oneway()
   let mut index = 0
   while !initiator.is_finished() {
     let message = case.messages[index]
-    let wrote = if one_way || index % 2 == 0 {
+    let wrote = if initiator.initiator_sends_at(index) {
       initiator.write_message(message.payload)
     } else {
       responder.write_message(message.payload)
@@ -208,7 +207,7 @@ fn run_vector(case : VecCase) -> Unit raise Error {
     if wrote != message.ciphertext {
       fail(case.protocol_name + " handshake message mismatch")
     }
-    let got = if one_way || index % 2 == 0 {
+    let got = if initiator.initiator_sends_at(index) {
       responder.read_message(wrote)
     } else {
       initiator.read_message(wrote)
@@ -223,7 +222,7 @@ fn run_vector(case : VecCase) -> Unit raise Error {
   assert_eq(init_transport.handshake_hash(), case.handshake_hash)
   while index < case.messages.length() {
     let message = case.messages[index]
-    if one_way || index % 2 == 0 {
+    if initiator.initiator_sends_at(index) {
       let wrote = init_transport.write_message(message.payload)
       if wrote != message.ciphertext {
         fail(case.protocol_name + " transport message mismatch")
@@ -241,12 +240,39 @@ fn run_vector(case : VecCase) -> Unit raise Error {
 }
 
 ///|
-/// Runs every vendored Cacophony vector this library claims to support.
-/// Returns a one-line pass count per pattern.
-pub fn verify_cacophony_vectors() -> String raise Error {
+/// Counts from one execution of every vendored Cacophony vector.
+/// `skipped` is loaded minus executed. A vector that throws does not increment
+/// `vectors_executed`.
+pub struct CacophonyReport {
+  vectors_loaded : Int32
+  vectors_executed : Int32
+  messages_compared : Int32
+  skipped : Int32
+}
+
+///|
+/// Load the embedded suite and run each vector once.
+pub fn cacophony_report() -> CacophonyReport raise Error {
   let cases = load_cacophony()
+  let mut executed = 0
+  let mut messages = 0
   for case in cases {
     run_vector(case)
+    executed = executed + 1
+    messages = messages + case.messages.length()
   }
-  cases.length().to_string() + "/" + cases.length().to_string()
+  {
+    vectors_loaded: cases.length(),
+    vectors_executed: executed,
+    messages_compared: messages,
+    skipped: cases.length() - executed,
+  }
+}
+
+///|
+/// Runs every vendored Cacophony vector this library claims to support.
+/// Returns `executed/loaded` from `cacophony_report`.
+pub fn verify_cacophony_vectors() -> String raise Error {
+  let report = cacophony_report()
+  report.vectors_executed.to_string() + "/" + report.vectors_loaded.to_string()
 }

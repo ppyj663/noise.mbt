@@ -1,0 +1,48 @@
+{
+  "nnfallback_chacha": {
+    "handshake_hash": "6cdea0a808eee16546ab45795eab788b186af1d59d06fe1603a2497ec7711fd8",
+    "m1": "95ebc60d2b1fa672c1f46a8aa265ef51bfe38e7ccb39ec5be34069f1448088430a999c3d6d87db6785bbdb7ee87c545bed40bc4daabf9b74eea0e276acffe9",
+    "m2": "ca37dc49ea3a4220c885e616c6bcc8db8d5b28ca64fa59594629bc",
+    "note": "one remaining handshake message from the responder; next transport message is from the initiator",
+    "protocol": "Noise_NNfallback_25519_ChaChaPoly_SHA256",
+    "responder_sends_first": true
+  },
+  "oracle": "scripts/fallback_oracle.py",
+  "python_cryptography": "41.0.7",
+  "sources": [
+    "Noise Protocol Framework revision 34, sections 5, 9 and 10.2",
+    "https://noiseprotocol.org/noise.html",
+    "cryptography 41.0.7 X25519, ChaCha20Poly1305, AESGCM",
+    "Python hashlib SHA-256 and hmac"
+  ],
+  "xxfallback_aes": {
+    "handshake_hash": "c496f058c365d5caf7e902a85a0645132c6bdee71d92b18dd1ca5e49d7c4bcb1",
+    "m1": "95ebc60d2b1fa672c1f46a8aa265ef51bfe38e7ccb39ec5be34069f144808843824e059afdb8c2f7397b7b398d84a6cde4178068ad7976bd04793a16ce9d308ca91c7f9663d71e706f1696026fa2146d2c279ebeeab1283fe1543fce646f4b55dd79db767250ef0a42fd3a3258c985",
+    "m2": "8c2db1c7f7485b1c5dcc2275c19665b2aed8f0fd9dcb02944ffbbd4ea4f4553f303e4708d46f1d421eb0fd5919d276be616c6fbc51d425b1c8f4e110807ac2211009bf9e20c51530685c26",
+    "m3": "58e4ca05319f8011433395e96952f79bc8f048facbae9ad5023d0f",
+    "m4": "d3207f11a4fee2cbb28e9920cac46b671825c27012972d50778090b5d090593bd4",
+    "protocol": "Noise_XXfallback_25519_AESGCM_SHA256",
+    "psk0": null,
+    "responder_sends_first": true
+  },
+  "xxfallback_chacha": {
+    "handshake_hash": "66706e005cb4f97b0574938e8d6ff4ac361e16bed0fa9222c62dfa414955e104",
+    "m1": "95ebc60d2b1fa672c1f46a8aa265ef51bfe38e7ccb39ec5be34069f144808843c95caa5acaf9a7cf34254947f0d8da9233b3a4a57993c4d824696e4b1cef496cfc415150bc303711ab22d63e0b682d48084b2a393fd6abd60235cc1b608d2df6c6f61259ab04d5a6317cd5649565b0",
+    "m2": "1ec24f2fa67db6f7335bb7e2848571f4be76ae6702fd2123465e59e6f92f020a55cbea5db2a784c2e95955db3a2f8ca75bf745ec726d4ff246b6d412ac7cc8d24df1fe17d71c768fbb09d4",
+    "m3": "2298f891ef5a025762c194a758050b154dd6c9981e70a5ff143dd0",
+    "m4": "acbba3c811c00a4fc7f71cddfe5e401d53ab7d529b09fa9b13b7c457eb5b866041",
+    "protocol": "Noise_XXfallback_25519_ChaChaPoly_SHA256",
+    "psk0": null,
+    "responder_sends_first": true
+  },
+  "xxfallback_psk0_chacha": {
+    "handshake_hash": "25ebeb2f816269092295291a34ce53c42a18cb5f79370b468f940770d2b29602",
+    "m1": "95ebc60d2b1fa672c1f46a8aa265ef51bfe38e7ccb39ec5be34069f144808843a395d49b47dc98a56cf25b89ef6dff933cd51b2efaefc455b62a8f20caef67bfd1a702094ca8e9bd3950821b6095e59f6ace57de29e6be8088261a4d4bdc407b783775bcc8d239d0e783d6553f4038",
+    "m2": "90a871af2c5609b10e4e43a8cb3a095eb518b917ac268dcedae76914adf6f628cdf0745c8abdc1d71ed7539f6d7121ed75e21a916b0ae64d2c70aa91c591ea675dd4b5e8163821d485b6b5",
+    "m3": "57393d7b5089d2ed4040a52976031db00b3e569495f8cb046689b0",
+    "m4": "5d8fac1606c985a800eefa899b22fe95ecf6b0dfea221d1ab07a4c7d4e43c2ed21",
+    "protocol": "Noise_XXfallback+psk0_25519_ChaChaPoly_SHA256",
+    "psk0": "a7554cd5dfc72e5b7e2146beccc1c87ac59fdc6a1f1355a540c89e358363d3b4",
+    "responder_sends_first": true
+  }
+}

@@ -8,7 +8,7 @@ Noise 握手规则以 Noise Protocol Framework 修订 34 为准：
 
 - 名称：The Noise Protocol Framework
 - 链接：https://noiseprotocol.org/noise.html
-- 使用范围：`CipherState`、`SymmetricState`、`HandshakeState`，单向、基础和延迟握手模式，`pskN` 修饰符，以及 25519、448、ChaChaPoly、AESGCM、SHA256、SHA512、BLAKE2s、BLAKE2b。
+- 使用范围：`CipherState`、`SymmetricState`、`HandshakeState`，单向、基础和延迟握手模式，`pskN` 与 `fallback`，以及 25519、448、ChaChaPoly、AESGCM、SHA256、SHA512、BLAKE2s、BLAKE2b。DH 无效公钥的处理以第 4.1、12.1、12.2 和 14 节为准，不以 RFC 7748 代替这些条款。
 
 ## snow
 
@@ -44,3 +44,5 @@ Noise 握手规则以 Noise Protocol Framework 修订 34 为准：
 - 本仓库文件：`vectors/cacophony.json`、`vectors/ATTRIBUTION.md`、`vectors_data.mbt`
 - 范围：不含 `fail`、`fallback`、`hybrid` 的全部 Cacophony 向量，共 944 条。
 - 紧凑 JSON 的 SHA-256：`e2f1ddfbf5297125bdd10558ba7701fbae5d5b2b423b65d022d013ad066aacd0`
+
+`XXfallback` 的差分常量来自本机 Python 3 与 cryptography 41.0.7（X25519、ChaCha20Poly1305、AESGCM、hashlib SHA-256），不是 Cacophony 文件里的向量。Cacophony 这份 944 条收录不含 fallback。
